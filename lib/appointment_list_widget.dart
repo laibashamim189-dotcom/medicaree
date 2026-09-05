@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'appointment_screen.dart';
 
 class AppointmentListWidget extends StatelessWidget {
-  final Color primaryTeal;
+  final Color primaryBlue;
 
-  const AppointmentListWidget({super.key, required this.primaryTeal});
+  const AppointmentListWidget({super.key, required this.primaryBlue});
 
   @override
   Widget build(BuildContext context) {
@@ -44,49 +45,63 @@ class AppointmentListWidget extends StatelessWidget {
           itemBuilder: (context, index) {
             var doc = snapshot.data!.docs[index];
             var data = doc.data() as Map<String, dynamic>;
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    radius: 25,
-                    backgroundColor: primaryTeal.withOpacity(0.1),
-                    child: Icon(Icons.person, color: primaryTeal, size: 30),
-                  ),
-                  title: Text(
-                    data['doctorName'] ?? "Doctor",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 5),
-                      Text(
-                        data['specialty'] ?? "Medical Consultation",
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.calendar_today, size: 16, color: primaryTeal),
-                          const SizedBox(width: 5),
-                          Text(
-                            data['date'] ?? "No Date",
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          const SizedBox(width: 15),
-                          Icon(Icons.access_time, size: 16, color: primaryTeal),
-                          const SizedBox(width: 5),
-                          Text(
-                            data['time'] ?? "No Time",
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    ],
+            
+            return Dismissible(
+              key: Key(doc.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                color: Colors.transparent,
+                child: const Icon(Icons.delete, color: Colors.grey),
+              ),
+              onDismissed: (direction) {
+                FirebaseFirestore.instance.collection('appointments').doc(doc.id).delete();
+              },
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      radius: 25,
+                      backgroundColor: primaryBlue.withOpacity(0.1),
+                      child: Icon(Icons.person, color: primaryBlue, size: 30),
+                    ),
+                    title: Text(
+                      data['doctorName'] ?? "Doctor",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 5),
+                        Text(
+                          data['specialty'] ?? "Medical Consultation",
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.calendar_today, size: 16, color: primaryBlue),
+                            const SizedBox(width: 5),
+                            Text(
+                              data['date'] ?? "No Date",
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 15),
+                            Icon(Icons.access_time, size: 16, color: primaryBlue),
+                            const SizedBox(width: 5),
+                            Text(
+                              data['time'] ?? "No Time",
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
