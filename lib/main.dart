@@ -1,23 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'splash_screen.dart';
 import 'doctor_dashboard.dart';
-import 'doctor_search_screen.dart';
 import 'caregiver_dashboard.dart';
 import 'patient_dashboard.dart';
+import 'notification_service.dart';
+import 'login_screen.dart';
+import 'alarm_screen.dart';
+
+// Global key to handle navigation from notifications
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  // Ensure Flutter is initialized before any plugins
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
   try {
     await Firebase.initializeApp();
+    
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    
+    // Notification Init
+    await NotificationService.init();
+
+    // CRITICAL: Request all necessary permissions on start
+    await _requestRequiredPermissions();
+    
   } catch (e) {
-    debugPrint("Firebase initialization error: $e");
+    debugPrint("Initialization error: $e");
   }
 
   runApp(const MedicareApp());
+}
+
+Future<void> _requestRequiredPermissions() async {
+  // 1. Notification Permission (Android 13+)
+  await Permission.notification.request();
+
+  // 2. Exact Alarm Permission (Android 13+)
+  if (await Permission.scheduleExactAlarm.isDenied) {
+    await Permission.scheduleExactAlarm.request();
+  }
+
+  // 3. Ignore Battery Optimizations
+  if (await Permission.ignoreBatteryOptimizations.isDenied) {
+    await Permission.ignoreBatteryOptimizations.request();
+  }
 }
 
 class MedicareApp extends StatelessWidget {
@@ -26,6 +58,7 @@ class MedicareApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey, // Set the global navigator key
       debugShowCheckedModeBanner: false,
       title: 'Medicare: Smart Health Reminder',
       theme: ThemeData(
@@ -37,7 +70,6 @@ class MedicareApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      // App starts with SplashScreen
       home: const SplashScreen(),
     );
   }
@@ -55,10 +87,9 @@ class RoleWrapper extends StatelessWidget {
       case 'Caregiver':
         return const CaregiverDashboard();
       case 'Patient':
-        // Modified: Patients now see the Doctor Search Screen first
-        return const DoctorSearchScreen();
+        return const PatientDashboard(); 
       default:
-        return const DoctorSearchScreen();
+        return const LoginScreen();
     }
   }
 }
