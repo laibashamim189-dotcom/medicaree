@@ -1,111 +1,106 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class CaregiverRequestScreen extends StatefulWidget {
-  const CaregiverRequestScreen({super.key});
+class CaregiverRequestsViewScreen extends StatelessWidget {
+  const CaregiverRequestsViewScreen({Key? key}) : super(key: key);
 
-  @override
-  State<CaregiverRequestScreen> createState() => _CaregiverRequestScreenState();
-}
+  // Accept request function
+  Future<void> _acceptRequest(String requestId) async {
+    await FirebaseFirestore.instance
+        .collection('caregiver_requests')
+        .doc(requestId)
+        .update({
+      'status': 'accepted', // Status changes to 'accepted'
+      'acceptedAt': FieldValue.serverTimestamp(),
+    });
+  }
 
-class _CaregiverRequestScreenState extends State<CaregiverRequestScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  String _relation = 'Relative';
+  // Reject request function
+  Future<void> _rejectRequest(String requestId) async {
+    await FirebaseFirestore.instance
+        .collection('caregiver_requests')
+        .doc(requestId)
+        .update({
+      'status': 'rejected',
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final String currentCaregiverEmail =
+        FirebaseAuth.instance.currentUser?.email ?? '';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Caregiver Request"),
-        backgroundColor: Colors.blueAccent,
+        title: const Text('Pending Patient Requests'),
+        backgroundColor: const Color(0xFF4B9F90),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Who is your Caregiver?",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: "Caregiver Full Name",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-                validator: (value) => value!.isEmpty ? "Please enter a name" : null,
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: "Phone Number",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.phone),
-                ),
-              ),
-              const SizedBox(height: 15),
-              DropdownButtonFormField<String>(
-                value: _relation,
-                decoration: const InputDecoration(
-                  labelText: "Relationship",
-                  border: OutlineInputBorder(),
-                ),
-                items: ['Relative', 'Professional Nurse', 'Friend', 'Other']
-                    .map((label) => DropdownMenuItem(
-                  value: label,
-                  child: Text(label),
-                ))
-                    .toList(),
-                onChanged: (value) => setState(() => _relation = value!),
-              ),
-              const Spacer(),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    _submitRequest();
-                  }
-                },
-                child: const Text(
-                  "SEND REQUEST TO CAREGIVER",
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      body: StreamBuilder<QuerySnapshot>(
+        // Caregiver ko apni email wali saari requests yahan milengi
+        stream: FirebaseFirestore.instance
+            .collection('caregiver_requests')
+            .where('caregiverEmail', isEqualTo: currentCaregiverEmail)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-  void _submitRequest() {
-    // Logic to save to Firebase would happen here
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Request Sent!"),
-        content: Text("A request has been sent to ${_nameController.text}. Wait for them to accept."),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close Dialog
-              Navigator.pop(context); // Go back to Dashboard
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('No pending requests found.'));
+          }
+
+          return ListView.builder(
+            itemCount: snapshot.data!.docs.length,
+            itemBuilder: (context, index) {
+              final doc = snapshot.data!.docs[index];
+              final data = doc.data() as Map<String, dynamic>;
+              final String docId = doc.id;
+              final String status = data['status'] ?? 'pending';
+
+              return Card(
+                margin: const EdgeInsets.all(10),
+                child: ListTile(
+                  title: Text("Patient: ${data['patientName'] ?? 'Unknown'}"),
+                  subtitle: Text("Relationship: ${data['relationship']}\nStatus: $status"),
+                  trailing: status == 'pending'
+                      ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.check_circle, color: Colors.green),
+                        onPressed: () => _acceptRequest(docId),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.cancel, color: Colors.red),
+                        onPressed: () => _rejectRequest(docId),
+                      ),
+                    ],
+                  )
+                      : Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: status == 'accepted'
+                          ? Colors.green.shade100
+                          : Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      status.toUpperCase(),
+                      style: TextStyle(
+                        color: status == 'accepted'
+                            ? Colors.green.shade800
+                            : Colors.red.shade800,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
             },
-            child: const Text("Back to Dashboard"),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
