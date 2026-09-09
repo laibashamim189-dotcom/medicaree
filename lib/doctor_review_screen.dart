@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DoctorReviewScreen extends StatefulWidget {
   final String appointmentId;
+  final String? patientId; 
   final String patientName;
   final String patientCondition;
-  final String collectionName; // Added to support both collections
+  final String collectionName; 
 
   const DoctorReviewScreen({
     super.key, 
     required this.appointmentId, 
+    this.patientId,
     required this.patientName, 
     required this.patientCondition,
-    this.collectionName = 'appointments', // Default for backward compatibility
+    this.collectionName = 'doctor_requests',
   });
 
   @override
@@ -29,8 +32,43 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
   String managedBy = 'Patient'; 
   bool needsPhysicalCaregiver = false;
   bool _isSubmitting = false;
+  bool _isEditMode = false;
 
   static const Color brandBlue = Color(0xFF1565C0);
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchExistingData();
+  }
+
+  Future<void> _fetchExistingData() async {
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection(widget.collectionName)
+          .doc(widget.appointmentId)
+          .get();
+
+      if (doc.exists) {
+        var data = doc.data() as Map<String, dynamic>;
+        if (data['status'] == 'Approved' && data['recommendations'] != null) {
+          setState(() {
+            _isEditMode = true;
+            var recs = data['recommendations'];
+            _medsController.text = recs['meds'] ?? "";
+            _activityController.text = recs['activities'] ?? "";
+            _measurementController.text = recs['measurements'] ?? "";
+            _systolicController.text = recs['targetSystolic'] ?? "";
+            _diastolicController.text = recs['targetDiastolic'] ?? "";
+            managedBy = recs['managedBy'] ?? 'Patient';
+            needsPhysicalCaregiver = recs['needsPhysicalCaregiver'] ?? false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching existing data: $e");
+    }
+  }
 
   @override
   void dispose() {
@@ -43,10 +81,18 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
   }
 
   Future<void> _submitRecommendation() async {
+    if (widget.patientId == null) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error: Patient ID not found.")));
+       return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
-      await FirebaseFirestore.instance.collection(widget.collectionName).doc(widget.appointmentId).update({
+      final String currentDoctorId = FirebaseAuth.instance.currentUser?.uid ?? "";
+
+      Map<String, dynamic> updateData = {
         'status': 'Approved', 
+        'doctorId': currentDoctorId,
         'recommendations': {
           'meds': _medsController.text.trim(),
           'activities': _activityController.text.trim(),
@@ -57,10 +103,22 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
           'needsPhysicalCaregiver': needsPhysicalCaregiver,
         },
         'reviewedAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (_isEditMode) {
+        updateData['isEdited'] = true;
+        updateData['lastEditedAt'] = FieldValue.serverTimestamp();
+      }
+
+      await FirebaseFirestore.instance
+          .collection(widget.collectionName)
+          .doc(widget.appointmentId)
+          .update(updateData);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Recommendations submitted successfully!")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isEditMode ? "Recommendations updated successfully!" : "Recommendations submitted successfully!")
+        ));
         Navigator.pop(context);
       }
     } catch (e) {
@@ -75,21 +133,43 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Review: ${widget.patientName}"), 
+        title: Text(_isEditMode ? "Edit Recommendations" : "Review Patient"), 
         backgroundColor: brandBlue, 
-        foregroundColor: Colors.white
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: _isSubmitting 
         ? const Center(child: CircularProgressIndicator())
         : SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Patient Condition: ${widget.patientCondition}",
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16)),
-            const Divider(height: 30),
+            // Patient Header Info Box
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F9FF),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: const Color(0xFFE1EBF7)),
+              ),
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                  children: [
+                    TextSpan(text: "${widget.patientName}: ", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    TextSpan(text: widget.patientCondition, style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black87)),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 25),
+            const Text("Provide Recommendations", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Divider(),
 
             _buildSectionTitle("Medication Recommendation"),
             _buildTextField(_medsController, "e.g., Insulin 10 units before breakfast"),
@@ -150,16 +230,17 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
               contentPadding: EdgeInsets.zero,
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 35),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 55),
                 backgroundColor: brandBlue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
               ),
               onPressed: _submitRecommendation,
-              child: const Text("Submit Recommendations", style: TextStyle(color: Colors.white, fontSize: 16)),
+              child: Text(_isEditMode ? "UPDATE RECOMMENDATIONS" : "SUBMIT RECOMMENDATIONS", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -179,12 +260,14 @@ class _DoctorReviewScreenState extends State<DoctorReviewScreen> {
       maxLines: maxLines,
       keyboardType: keyboardType,
       textAlign: maxLines == 1 ? TextAlign.center : TextAlign.start,
+      style: const TextStyle(fontSize: 14),
       decoration: InputDecoration(
         hintText: hint, 
-        border: const OutlineInputBorder(),
+        isDense: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         filled: true,
         fillColor: Colors.grey[50],
-        contentPadding: maxLines == 1 ? const EdgeInsets.symmetric(horizontal: 10) : null,
+        contentPadding: const EdgeInsets.all(12),
       ),
     );
   }
