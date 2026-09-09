@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_screen.dart';
 import 'patient_dashboard.dart';
+import 'login_screen.dart';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -26,18 +27,24 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
+          automaticallyImplyLeading: false, // Removed back button
           title: const Text("Caregiver Dashboard", style: TextStyle(color: Colors.white)),
           backgroundColor: brandBlue,
           iconTheme: const IconThemeData(color: Colors.white),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const SignupScreen()),
-              );
-            },
-          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (mounted) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  );
+                }
+              },
+            ),
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
