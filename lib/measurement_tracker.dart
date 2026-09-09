@@ -48,12 +48,22 @@ class _MeasurementTrackerScreenState extends State<MeasurementTrackerScreen> {
     int? diastolicValue;
 
     if (_selectedCategory == 'Blood Pressure') {
-      final s = int.tryParse(_systolicController.text.trim());
-      final d = int.tryParse(_diastolicController.text.trim());
+      final sStr = _systolicController.text.trim();
+      final dStr = _diastolicController.text.trim();
+
+      if (sStr.isEmpty || dStr.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Please fill all details")),
+        );
+        return;
+      }
+
+      final s = int.tryParse(sStr);
+      final d = int.tryParse(dStr);
 
       if (s == null || d == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please enter valid numbers for Systolic & Diastolic")),
+          const SnackBar(content: Text("Error: Values must be in numeric form, not text. Please enter values in numbers.")),
         );
         return;
       }
@@ -62,14 +72,25 @@ class _MeasurementTrackerScreenState extends State<MeasurementTrackerScreen> {
       diastolicValue = d;
       displayValue = "$s/$d mmHg";
     } else {
-      if (_valueController.text.isEmpty) {
+      final vStr = _valueController.text.trim();
+      
+      if (vStr.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Please enter value")),
         );
         return;
       }
+
+      final v = double.tryParse(vStr);
+      if (v == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error: Value must be in numeric form, not text. Please enter values in numbers.")),
+        );
+        return;
+      }
+
       String unit = _selectedCategory == 'Body Weight' ? 'kg' : 'mg/dL';
-      displayValue = "${_valueController.text.trim()} $unit";
+      displayValue = "$vStr $unit";
     }
 
     final now = DateTime.now();
@@ -112,10 +133,7 @@ class _MeasurementTrackerScreenState extends State<MeasurementTrackerScreen> {
         title: const Text("Health Tracker", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         backgroundColor: brandBlue,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false, // Remove back icon
       ),
       body: SingleChildScrollView(
         child: Column(
