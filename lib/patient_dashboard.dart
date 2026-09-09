@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 import 'medication_screen.dart';
 import 'activity_screen.dart';
 import 'measurement_tracker.dart';
@@ -12,6 +14,7 @@ import 'feedback_screen.dart';
 import 'medical_directory_screen.dart';
 import 'pharmacyDelivery_screen.dart';
 import 'AiChatScreen.dart';
+import 'cloudinary_service.dart';
 
 class PatientDashboard extends StatefulWidget {
   final String? patientId;
@@ -30,7 +33,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
   @override
   void initState() {
     super.initState();
-    // If patientId is passed (from Doctor), use it. Otherwise, use logged-in user.
     _effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid ?? "";
     _updateScreens();
   }
@@ -46,7 +48,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
       ),
       AiChatScreen(
         onBack: () => setState(() => _selectedIndex = 0),
-        isReadOnly: false, // Doctors and Patients can both chat; never read-only.
+        isReadOnly: false,
       ),
       ProfileScreen(
         patientId: _effectivePatientId,
@@ -174,11 +176,154 @@ class DashboardHome extends StatelessWidget {
 }
 
 // --- SCREEN 5: PROFILE SCREEN ---
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final String patientId;
   final VoidCallback? onBack;
   final bool isReadOnly;
   const ProfileScreen({super.key, required this.patientId, this.onBack, this.isReadOnly = false});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _isUploading = false;
+  String? _currentImageUrl;
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: source, imageQuality: 50);
+
+    if (pickedFile != null) {
+      setState(() => _isUploading = true);
+      try {
+        String? imageUrl = await CloudinaryService.uploadImage(File(pickedFile.path));
+        if (imageUrl != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.patientId)
+              .update({'profileImageUrl': imageUrl});
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Profile photo updated successfully!")),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Failed to upload image: $e")),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isUploading = false);
+      }
+    }
+  }
+
+  Future<void> _removeProfilePhoto() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Text("Remove profile picture?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              setState(() => _isUploading = true);
+              try {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(widget.patientId)
+                    .update({'profileImageUrl': FieldValue.delete()});
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Profile photo removed")),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Error: $e")),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isUploading = false);
+              }
+            },
+            child: const Text("Remove", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImageSourceDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      "Profile picture",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  _currentImageUrl != null 
+                    ? IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.black54),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _removeProfilePhoto();
+                        },
+                      )
+                    : const SizedBox(width: 48), 
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.image_outlined, color: Colors.black87),
+              title: const Text("Gallery"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: Colors.black87),
+              title: const Text("Camera"),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            const SizedBox(height: 15),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,44 +343,71 @@ class ProfileScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 25),
                   child: Row(
                     children: [
-                      if (onBack != null)
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.white),
-                          onPressed: onBack,
-                        ),
-                      const Text(
+                      Text(
                         "My Profile",
                         style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                const CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.white24,
-                  child: Icon(Icons.person, size: 60, color: Colors.white),
-                ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
                 StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance.collection('users').doc(patientId).snapshots(),
+                  stream: FirebaseFirestore.instance.collection('users').doc(widget.patientId).snapshots(),
                   builder: (context, snapshot) {
                     String name = "User Profile";
                     String email = "Managing your health";
+                    String? profileImageUrl;
                     if (snapshot.hasData && snapshot.data!.exists) {
-                      try {
-                        name = snapshot.data!.get('name') ?? "User Profile";
-                        email = snapshot.data!.get('email') ?? "Managing your health";
-                      } catch (e) {
-                        debugPrint("Error fetching user profile: $e");
-                      }
+                      final data = snapshot.data!.data() as Map<String, dynamic>;
+                      name = data['name'] ?? "User Profile";
+                      email = data['email'] ?? "Managing your health";
+                      profileImageUrl = data['profileImageUrl'];
+                      _currentImageUrl = profileImageUrl;
                     }
+
                     return Column(
                       children: [
+                        Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 55,
+                              backgroundColor: Colors.white24,
+                              backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
+                              child: profileImageUrl == null
+                                  ? const Icon(Icons.person, size: 65, color: Colors.white)
+                                  : null,
+                            ),
+                            if (_isUploading)
+                              const Positioned.fill(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            if (!widget.isReadOnly)
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: GestureDetector(
+                                  onTap: _showImageSourceDialog,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF607D8B),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                    ),
+                                    child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
                         Text(name, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                         Text(email, style: const TextStyle(color: Colors.white70, fontSize: 16)),
                       ],
@@ -253,10 +425,9 @@ class ProfileScreen extends StatelessWidget {
               children: [
                 const Text("Account Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF263238))),
                 const SizedBox(height: 15),
-                _profileOption(context, Icons.history_edu, "Medical History", brandBlue, MedicalHistoryScreen(patientId: patientId)),
-                _profileOption(context, Icons.emergency_outlined, "Emergency Contacts", Colors.redAccent, EmergencyContactsScreen(patientId: patientId, isReadOnly: isReadOnly)),
-                if (!isReadOnly)
-                   _profileOption(context, Icons.chat_bubble_outline, "Send Feedback", Colors.orangeAccent, const FeedbackScreen()),
+                _profileOption(context, Icons.history_edu, "Medical History", brandBlue, MedicalHistoryScreen(patientId: widget.patientId)),
+                _profileOption(context, Icons.emergency_outlined, "Emergency Contacts", Colors.redAccent, EmergencyContactsScreen(patientId: widget.patientId, isReadOnly: widget.isReadOnly)),
+                _profileOption(context, Icons.chat_bubble_outline, "Send Feedback", Colors.orangeAccent, const FeedbackScreen()),
               ],
             ),
           ),
@@ -265,7 +436,7 @@ class ProfileScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
             child: OutlinedButton.icon(
               onPressed: () {
-                if (isReadOnly) {
+                if (widget.isReadOnly) {
                   Navigator.pop(context);
                 } else {
                   FirebaseAuth.instance.signOut();
@@ -276,8 +447,8 @@ class ProfileScreen extends StatelessWidget {
                   );
                 }
               },
-              icon: Icon(isReadOnly ? Icons.arrow_back : Icons.logout, color: Colors.red),
-              label: Text(isReadOnly ? "BACK TO PORTAL" : "LOG OUT", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              icon: Icon(widget.isReadOnly ? Icons.arrow_back : Icons.logout, color: Colors.red),
+              label: Text(widget.isReadOnly ? "BACK TO PORTAL" : "LOG OUT", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 55),
                 side: const BorderSide(color: Colors.redAccent, width: 1.5),
