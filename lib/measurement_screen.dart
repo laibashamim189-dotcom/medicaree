@@ -82,7 +82,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: selectedDate,
-                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                            firstDate: DateTime.now(),
                             lastDate: DateTime(2100),
                           );
                           if (picked != null) setDialogState(() => selectedDate = picked);
@@ -109,27 +109,13 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: brandBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
                   onPressed: _isSaving ? null : () async {
-                    if (_effectivePatientId.isEmpty) return;
                     setDialogState(() => _isSaving = true);
                     try {
-                      final scheduledDateTime = DateTime(
-                        selectedDate.year,
-                        selectedDate.month,
-                        selectedDate.day,
-                        selectedTime.hour,
-                        selectedTime.minute,
-                      );
-
+                      final scheduledDateTime = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute);
                       final docRef = await _firestore.collection('reminders').add({
                         'userId': _effectivePatientId,
                         'title': selectedCategory,
@@ -149,24 +135,16 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
                         docId: docRef.id,
                         type: 'measurement',
                         userId: _effectivePatientId,
-                        repeats: true,
                       );
 
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Measurement reminder set for ${DateFormat.yMMMd().format(scheduledDateTime)}")),
-                        );
-                      }
+                      if (mounted) Navigator.pop(context);
                     } catch (e) {
-                      debugPrint("Error saving measurement reminder: $e");
+                      debugPrint("Save Error: $e");
                     } finally {
                       setDialogState(() => _isSaving = false);
                     }
                   },
-                  child: _isSaving 
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text("Save", style: TextStyle(color: Colors.white)),
+                  child: const Text("Save", style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -184,17 +162,8 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         const SizedBox(height: 5),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: brandBlue, size: 20),
-              const SizedBox(width: 10),
-              Expanded(child: child),
-            ],
-          ),
+          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
+          child: Row(children: [Icon(icon, color: brandBlue, size: 20), const SizedBox(width: 10), Expanded(child: child)]),
         ),
       ],
     );
@@ -207,7 +176,6 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
       appBar: AppBar(
         title: const Text("Measurement Reminders", style: TextStyle(color: Colors.white)),
         backgroundColor: brandBlue,
-        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -221,50 +189,30 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No measurement reminders found"));
 
-          final docs = snapshot.data!.docs;
-
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
+            itemCount: snapshot.data!.docs.length,
             itemBuilder: (context, index) {
-              final doc = docs[index];
+              final doc = snapshot.data!.docs[index];
               final data = doc.data() as Map<String, dynamic>;
-              final title = data['title'] ?? 'Measurement';
-              final date = data['date'] ?? '';
-              final time = data['time'] ?? '';
-              final frequency = data['frequency'] ?? 'Once a day';
-
               return Dismissible(
                 key: Key(doc.id),
                 direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
-                background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), color: Colors.transparent, child: const Icon(Icons.delete, color: Colors.grey)),
-                onDismissed: widget.isReadOnly ? null : (direction) => _firestore.collection('reminders').doc(doc.id).delete(),
+                onDismissed: (dir) => _firestore.collection('reminders').doc(doc.id).delete(),
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 0,
                   color: Colors.grey[50],
+                  elevation: 0,
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: brandBlue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                      decoration: BoxDecoration(color: brandBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
                       child: const Icon(Icons.show_chart, color: brandBlue),
                     ),
-                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("$date at $time", style: const TextStyle(color: Colors.grey, fontSize: 14)),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(frequency, style: const TextStyle(color: brandBlue, fontSize: 10)),
-                        const Icon(Icons.notifications_active, color: brandBlue, size: 20),
-                      ],
-                    ),
+                    title: Text(data['title'] ?? 'Measurement', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("${data['date']} at ${data['time']}"),
+                    trailing: Text(data['frequency'] ?? "", style: const TextStyle(color: brandBlue, fontSize: 10)),
                   ),
                 ),
               );
