@@ -69,18 +69,26 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           TextButton(
             onPressed: () async {
-              if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(_effectivePatientId)
-                    .collection('emergency_contacts')
-                    .add({
-                  'name': nameController.text.trim(),
-                  'phone': phoneController.text.trim(),
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-                if (mounted) Navigator.pop(context);
+              final name = nameController.text.trim();
+              if (name.isEmpty || phoneController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all fields")));
+                return;
               }
+              if (RegExp(r'^[0-9]+$').hasMatch(name)) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Name cannot be numeric alone")));
+                return;
+              }
+              
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_effectivePatientId)
+                  .collection('emergency_contacts')
+                  .add({
+                'name': name,
+                'phone': phoneController.text.trim(),
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+              if (mounted) Navigator.pop(context);
             },
             child: const Text("Add"),
           ),
