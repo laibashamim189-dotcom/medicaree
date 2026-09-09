@@ -5,12 +5,15 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'main.dart';
 import 'alarm_screen.dart';
+import 'DirectChatScreen.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) async {
@@ -21,8 +24,15 @@ void notificationTapBackground(NotificationResponse response) async {
   }
 }
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint("Handling a background message: ${message.messageId}");
+}
+
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   static Future<void> init() async {
     try {
@@ -49,73 +59,93 @@ class NotificationService {
         onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
       );
 
-      if (Platform.isAndroid) {
-        final androidPlugin = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+      await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // Listen for foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint("Got a message whilst in the foreground!");
+        debugPrint("Message data: ${message.data}");
+
+        String title = message.notification?.title ?? "New Message";
+        String body = message.notification?.body ?? "";
         
-        await Permission.notification.request();
-        bool? canSchedule = await androidPlugin?.canScheduleExactNotifications();
-        if (canSchedule == false) {
-          await Permission.scheduleExactAlarm.request();
+        if (message.notification == null && message.data.isNotEmpty) {
+          title = message.data['title'] ?? "New Message";
+          body = message.data['text'] ?? message.data['body'] ?? "";
         }
 
-        // Fresh channel with max importance
-        const AndroidNotificationChannel channel = AndroidNotificationChannel(
-          'medication_urgent_v9', 
-          'Urgent Medication Alarms',
-          description: 'Used for precise medical reminders',
-          importance: Importance.max,
+        String channelId = 'chat_messages'; // Force chat channel for testing
+        
+        showImmediateNotification(
+          id: message.hashCode,
+          title: title,
+          body: body,
+          payload: jsonEncode(message.data),
+          channelId: channelId,
+        );
+      });
+
+      if (Platform.isAndroid) {
+        final androidPlugin = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
+          'chat_messages',
+          'Chat Messages',
+          description: 'Notifications for new messages',
+          importance: Importance.max, 
           playSound: true,
           enableVibration: true,
           showBadge: true,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
         );
-        await androidPlugin?.createNotificationChannel(channel);
+        await androidPlugin?.createNotificationChannel(chatChannel);
       }
-      debugPrint("Notification Service READY in $timeZoneName");
+      
+      updateFCMToken();
     } catch (e) {
-      debugPrint("Init Error: $e");
+      debugPrint("Notification Init Error: $e");
     }
   }
 
-  static Future<void> showTestNotification() async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'medication_urgent_v9',
-      'Urgent Medication Alarms',
-      importance: Importance.max,
-      priority: Priority.max,
-      fullScreenIntent: true,
-      playSound: true,
-      category: AndroidNotificationCategory.alarm,
-      ongoing: true,
-    );
-
-    // Schedule a test for 10 seconds from now to PROVE scheduling works
-    final testTime = DateTime.now().add(const Duration(seconds: 10));
-    final scheduledTZDate = tz.TZDateTime.from(testTime, tz.local);
-
-    await _notifications.zonedSchedule(
-      888,
-      'Scheduling Test 🧪',
-      'This will fire in 10 seconds if scheduling is working!',
-      scheduledTZDate,
-      const NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode({
-        'title': 'Test Logic',
-        'type': 'Test',
-        'docId': 'test_id',
-        'userId': 'test_user',
-      }),
-    );
-    
-    debugPrint("Scheduled test notification for: $scheduledTZDate");
+  static Future<void> updateFCMToken() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        String? token = await _messaging.getToken();
+        debugPrint("FCM Token: $token"); // Debugging token
+        if (token != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({'fcmToken': token}, SetOptions(merge: true));
+          debugPrint("Token updated in Firestore for user: ${user.uid}");
+        }
+      }
+    } catch (e) {
+      debugPrint("Error updating FCM token: $e");
+    }
   }
 
   static void _onNotificationTap(NotificationResponse response) {
     if (response.payload != null && response.payload!.isNotEmpty) {
+      final Map<String, dynamic> data = jsonDecode(response.payload!);
+      if (data['type'] == 'chat') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => DirectChatScreen(
+              doctorId: data['doctorId'] ?? '',
+              patientId: data['patientId'] ?? '',
+              receiverName: data['senderName'] ?? 'Chat',
+            ),
+          ),
+        );
+        return;
+      }
       if (response.actionId == null) {
-        final Map<String, dynamic> data = jsonDecode(response.payload!);
         data['fullPayload'] = response.payload;
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (context) => AlarmScreen(payload: data))
@@ -130,60 +160,11 @@ class NotificationService {
     try {
       final Map<String, dynamic> data = jsonDecode(payload);
       final String docId = data['docId'] ?? '';
-      final String type = data['type'] ?? 'medication';
       if (docId.isEmpty) return;
-      
-      String status = "Missed";
-      if (actionId == 'action_taken') {
-        if (type == 'medication') {
-          status = "Taken";
-          
-          // Stock Refill Logic
-          final doc = await FirebaseFirestore.instance.collection('reminders').doc(docId).get();
-          if (doc.exists) {
-            final docData = doc.data() as Map<String, dynamic>;
-            var stockStr = docData['stock']?.toString() ?? "";
-            if (stockStr.isNotEmpty) {
-              int stock = int.tryParse(stockStr) ?? 0;
-              if (stock > 0) {
-                stock--;
-                await FirebaseFirestore.instance.collection('reminders').doc(docId).update({'stock': stock.toString()});
-                
-                if (stock < 3) {
-                  showImmediateNotification(
-                    id: docId.hashCode + 1,
-                    title: "Low Stock Alert: ${data['title']}",
-                    body: "Only $stock doses left. Please refill your medicine soon!",
-                    payload: payload,
-                  );
-                }
-              }
-            }
-          }
-        } else if (type == 'measurement') {
-          status = "Measured";
-        } else if (type == 'activity') {
-          status = "Completed";
-        } else if (type == 'appointment') {
-          status = "Attended";
-        } else {
-          status = "Done";
-        }
-      }
-
+      String status = (actionId == 'action_taken') ? "Done" : "Missed";
       await FirebaseFirestore.instance.collection('reminders').doc(docId).update({'status': status});
-      await FirebaseFirestore.instance.collection('user_history').add({
-        'userId': data['userId'] ?? '',
-        'reminderId': docId,
-        'title': data['title'] ?? '',
-        'category': data['type'] ?? '',
-        'status': status,
-        'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-        'time': DateFormat.jm().format(DateTime.now()),
-        'timestamp': FieldValue.serverTimestamp(),
-      });
     } catch (e) {
-      debugPrint("Action Error: $e");
+      debugPrint("Action Logic Error: $e");
     }
   }
 
@@ -192,22 +173,18 @@ class NotificationService {
     required String title,
     required String body,
     String? payload,
+    String channelId = 'chat_messages',
   }) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'medication_urgent_v9',
-      'Urgent Medication Alarms',
+    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      'Chat Messages',
       importance: Importance.max,
       priority: Priority.max,
       showWhen: true,
+      playSound: true,
+      ticker: 'ticker',
     );
-
-    await _notifications.show(
-      id,
-      title,
-      body,
-      const NotificationDetails(android: androidDetails),
-      payload: payload,
-    );
+    await _notifications.show(id, title, body, NotificationDetails(android: androidDetails), payload: payload);
   }
 
   static Future<void> scheduleNotification({
@@ -218,25 +195,9 @@ class NotificationService {
     required String docId,
     required String type,
     String? userId,
-    bool repeats = false,
   }) async {
     try {
-      DateTime finalDate = scheduledDate;
-      final now = DateTime.now();
-
-      if (finalDate.isBefore(now)) {
-        if (repeats) {
-          while (finalDate.isBefore(now.add(const Duration(seconds: 5)))) {
-            finalDate = finalDate.add(const Duration(days: 1));
-          }
-        } else {
-          finalDate = now.add(const Duration(seconds: 20)); 
-        }
-      }
-
-      final scheduledTZDate = tz.TZDateTime.from(finalDate, tz.local);
-      debugPrint("ALARM SET: '$title' at $scheduledTZDate (Phone Time: $now)");
-
+      final scheduledTZDate = tz.TZDateTime.from(scheduledDate, tz.local);
       await _notifications.zonedSchedule(
         id.abs() % 1000000,
         title,
@@ -248,26 +209,11 @@ class NotificationService {
             'Urgent Medication Alarms',
             importance: Importance.max,
             priority: Priority.max,
-            fullScreenIntent: true,
-            ongoing: true,
-            category: AndroidNotificationCategory.alarm,
-            visibility: NotificationVisibility.public,
-          ),
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: repeats ? DateTimeComponents.time : null,
-        payload: jsonEncode({
-          'docId': docId,
-          'type': type,
-          'title': title,
-          'userId': userId ?? '',
-        }),
+        payload: jsonEncode({'docId': docId, 'type': type, 'title': title, 'userId': userId ?? ''}),
       );
     } catch (e) {
       debugPrint("Scheduling Error: $e");
