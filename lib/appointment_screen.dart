@@ -60,10 +60,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: _selectedTime ?? TimeOfDay.now()
-    );
+    TimeOfDay? picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
     if (picked != null) {
       setState(() {
         _selectedTime = picked;
@@ -99,7 +96,6 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                      const SizedBox(width: 10),
                       ElevatedButton(
                         onPressed: _isSaving ? null : () async {
                           if (_formKey.currentState!.validate()) {
@@ -108,10 +104,8 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                             if (mounted) setDialogState(() => _isSaving = false);
                           }
                         },
-                        style: ElevatedButton.styleFrom(backgroundColor: brandBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                        child: _isSaving 
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text("Save", style: TextStyle(color: Colors.white)),
+                        style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
+                        child: const Text("Save", style: TextStyle(color: Colors.white)),
                       ),
                     ],
                   )
@@ -126,20 +120,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
   Future<void> _saveAppointment() async {
     if (_effectivePatientId.isEmpty) return;
-    if (_selectedTime == null || _selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select Date and Time")));
-      return;
-    }
+    if (_selectedTime == null || _selectedDate == null) return;
 
     try {
-      DateTime scheduleTime = DateTime(
-        _selectedDate!.year, 
-        _selectedDate!.month, 
-        _selectedDate!.day, 
-        _selectedTime!.hour, 
-        _selectedTime!.minute
-      );
-
+      DateTime scheduleTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, _selectedTime!.hour, _selectedTime!.minute);
       final docRef = await FirebaseFirestore.instance.collection('reminders').add({
         'userId': _effectivePatientId,
         'title': "Appt: ${_docController.text.trim()}",
@@ -160,19 +144,9 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
         docId: docRef.id,
         type: 'appointment',
         userId: _effectivePatientId,
-        repeats: false,
       );
 
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Appointment reminder set for ${DateFormat.yMMMd().add_jm().format(scheduleTime)}")),
-        );
-      }
-      
-      _docController.clear();
-      _specialtyController.clear();
-      _selectedTime = null;
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint("Save Error: $e");
     }
@@ -182,32 +156,12 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Appointments", style: TextStyle(color: Colors.white)),
-        backgroundColor: brandBlue,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () => NotificationService.showTestNotification(),
-          )
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddAppointmentDialog,
-        backgroundColor: brandBlue,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      appBar: AppBar(title: const Text("Appointments", style: TextStyle(color: Colors.white)), backgroundColor: brandBlue, iconTheme: const IconThemeData(color: Colors.white)),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('reminders')
-            .where('userId', isEqualTo: _effectivePatientId)
-            .where('type', isEqualTo: 'appointment')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('reminders').where('userId', isEqualTo: _effectivePatientId).where('type', isEqualTo: 'appointment').orderBy('timestamp', descending: true).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No appointments scheduled"));
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No appointments"));
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -215,39 +169,18 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
             itemBuilder: (context, index) {
               var doc = snapshot.data!.docs[index];
               var data = doc.data() as Map<String, dynamic>;
-              final status = data['status'] ?? 'Pending';
-              
               return Dismissible(
                 key: Key(doc.id),
-                direction: DismissDirection.endToStart,
-                background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), color: Colors.transparent, child: const Icon(Icons.delete, color: Colors.grey)),
                 onDismissed: (_) => FirebaseFirestore.instance.collection('reminders').doc(doc.id).delete(),
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 0,
                   color: Colors.grey[50],
+                  elevation: 0,
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: brandBlue.withValues(alpha: 0.1), 
-                      child: const Icon(Icons.event, color: brandBlue)
-                    ),
+                    leading: CircleAvatar(backgroundColor: brandBlue.withOpacity(0.1), child: const Icon(Icons.event, color: brandBlue)),
                     title: Text(data['doctorName'] ?? "Doctor", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("${data['date']} at ${data['time']}"),
-                        Text("Status: $status", style: TextStyle(color: status == 'Attended' ? Colors.green : brandBlue, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: brandBlue.withValues(alpha: 0.1), 
-                        borderRadius: BorderRadius.circular(20)
-                      ),
-                      child: Text(data['specialty'] ?? "Appt", style: const TextStyle(color: brandBlue, fontSize: 12)),
-                    ),
+                    subtitle: Text("${data['date']} at ${data['time']}\nSpecialty: ${data['specialty'] ?? ''}"),
                   ),
                 ),
               );
@@ -255,24 +188,15 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
           );
         },
       ),
+      floatingActionButton: FloatingActionButton(onPressed: _showAddAppointmentDialog, backgroundColor: brandBlue, child: const Icon(Icons.add, color: Colors.white)),
     );
   }
 
   Widget _buildDialogField(TextEditingController controller, String hint, IconData icon) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-      validator: (v) => v!.isEmpty ? "Required" : null,
-    );
+    return TextFormField(controller: controller, decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))), validator: (v) => (v == null || v.isEmpty) ? "Required" : null);
   }
 
   Widget _buildPickerField(TextEditingController controller, String hint, IconData icon, VoidCallback onTap) {
-    return TextFormField(
-      controller: controller,
-      readOnly: true,
-      onTap: onTap,
-      decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-      validator: (v) => v!.isEmpty ? "Required" : null,
-    );
+    return TextFormField(controller: controller, readOnly: true, onTap: onTap, decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))), validator: (v) => (v == null || v.isEmpty) ? "Required" : null);
   }
 }
