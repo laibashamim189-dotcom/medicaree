@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'notification_service.dart';
 
 class MedicationScreen extends StatefulWidget {
@@ -52,8 +53,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
     DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime(2101),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
     );
     if (picked != null) {
       setState(() {
@@ -64,10 +65,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: _selectedTime ?? TimeOfDay.now()
-    );
+    TimeOfDay? picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
     if (picked != null) {
       setState(() {
         _selectedTime = picked;
@@ -86,21 +84,29 @@ class _MedicationScreenState extends State<MedicationScreen> {
           child: Form(
             key: _formKey,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text("Add Medication", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                _buildDialogField(_nameController, "Medicine Name", Icons.medication),
+                _buildDialogField(
+                  _nameController, 
+                  "Medicine Name", 
+                  Icons.medication,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\s]'))],
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return "Required";
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 15),
-                _buildDialogField(_dosageController, "Dosage (e.g., 1 Pill, 50mg)", Icons.vaccines),
+                _buildDialogField(_dosageController, "Dosage (e.g. 1 pill)", Icons.science),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<String>(
-                  initialValue: selectedFrequency,
+                  value: selectedFrequency,
                   decoration: InputDecoration(
                     labelText: "Frequency",
                     prefixIcon: const Icon(Icons.repeat, color: brandBlue),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
                   ),
                   items: ['Once a day', 'Twice a day', '3 times a day']
                       .map((l) => DropdownMenuItem(value: l, child: Text(l)))
@@ -112,8 +118,14 @@ class _MedicationScreenState extends State<MedicationScreen> {
                 const SizedBox(height: 15),
                 _buildPickerField(_timeController, "Reminder Time", Icons.access_time, () => _selectTime(context)),
                 const SizedBox(height: 15),
-                // Stock field made optional by passing isOptional: true
-                _buildDialogField(_stockController, "Stock (Optional)", Icons.inventory, keyboardType: TextInputType.number, isOptional: true),
+                _buildDialogField(
+                  _stockController, 
+                  "Stock (Optional)", 
+                  Icons.inventory, 
+                  keyboardType: TextInputType.number, 
+                  isOptional: true,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                ),
                 const SizedBox(height: 30),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -122,10 +134,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
                     const SizedBox(width: 10),
                     ElevatedButton(
                       onPressed: _isSaving ? null : _saveMedication,
-                      style: ElevatedButton.styleFrom(backgroundColor: brandBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                      child: _isSaving 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text("Save", style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
+                      child: const Text("Save", style: TextStyle(color: Colors.white)),
                     ),
                   ],
                 )
@@ -138,7 +148,6 @@ class _MedicationScreenState extends State<MedicationScreen> {
   }
 
   Future<void> _saveMedication() async {
-    if (widget.isReadOnly) return;
     if (!_formKey.currentState!.validate()) return;
     if (_effectivePatientId.isEmpty) return;
     if (_selectedTime == null || _selectedDate == null) {
@@ -179,20 +188,12 @@ class _MedicationScreenState extends State<MedicationScreen> {
         docId: docRef.id,
         type: 'medication',
         userId: _effectivePatientId,
-        repeats: true,
       );
 
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Reminder set for ${DateFormat.yMMMd().add_jm().format(scheduleTime)}")),
-        );
-      }
-      
+      if (mounted) Navigator.pop(context);
       _nameController.clear();
       _dosageController.clear();
       _stockController.clear();
-      _selectedTime = null;
     } catch (e) {
       debugPrint("Save Error: $e");
     } finally {
@@ -231,15 +232,15 @@ class _MedicationScreenState extends State<MedicationScreen> {
             itemBuilder: (context, index) {
               var doc = snapshot.data!.docs[index];
               var data = doc.data() as Map<String, dynamic>;
-              final String dosage = data['dosage'] ?? "";
-              final String stockStr = data['stock']?.toString() ?? "";
-              final int stockCount = int.tryParse(stockStr) ?? -1;
-              
+              final dosage = data['dosage'] ?? "";
+              final stockStr = data['stock'] ?? "";
+              final int stockCount = stockStr.isNotEmpty ? int.tryParse(stockStr) ?? -1 : -1;
+
               return Dismissible(
                 key: Key(doc.id),
                 direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
                 background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), color: Colors.transparent, child: const Icon(Icons.delete, color: Colors.grey)),
-                onDismissed: widget.isReadOnly ? null : (_) => FirebaseFirestore.instance.collection('reminders').doc(doc.id).delete(),
+                onDismissed: (direction) => FirebaseFirestore.instance.collection('reminders').doc(doc.id).delete(),
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -247,7 +248,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                   color: Colors.grey[50],
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: brandBlue.withValues(alpha: 0.1), 
+                      backgroundColor: brandBlue.withOpacity(0.1), 
                       child: const Icon(Icons.medication, color: brandBlue)
                     ),
                     title: Text(data['title'] ?? "Medicine", style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -264,19 +265,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                               children: [
                                 Icon(Icons.inventory_2_outlined, size: 14, color: stockCount < 3 ? Colors.red : Colors.grey[700]),
                                 const SizedBox(width: 4),
-                                Text(
-                                  "Stock: $stockCount",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: stockCount < 3 ? FontWeight.bold : FontWeight.normal,
-                                    color: stockCount < 3 ? Colors.red : Colors.grey[700],
-                                  ),
-                                ),
-                                if (stockCount < 3)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 8.0),
-                                    child: Text("Refill soon!", style: TextStyle(fontSize: 10, color: Colors.red, fontStyle: FontStyle.italic)),
-                                  ),
+                                Text("Stock: $stockCount", style: TextStyle(fontSize: 12, fontWeight: stockCount < 3 ? FontWeight.bold : FontWeight.normal)),
                               ],
                             ),
                           ),
@@ -285,7 +274,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: brandBlue.withValues(alpha: 0.1), 
+                        color: brandBlue.withOpacity(0.1), 
                         borderRadius: BorderRadius.circular(20)
                       ),
                       child: Text(data['frequency'] ?? "", style: const TextStyle(color: brandBlue, fontSize: 12)),
@@ -300,14 +289,27 @@ class _MedicationScreenState extends State<MedicationScreen> {
     );
   }
 
-  Widget _buildDialogField(TextEditingController controller, String hint, IconData icon, {TextInputType? keyboardType, bool isOptional = false}) {
+  Widget _buildDialogField(
+    TextEditingController controller, 
+    String hint, 
+    IconData icon, 
+    {TextInputType? keyboardType, 
+    bool isOptional = false,
+    List<TextInputFormatter>? inputFormatters,
+    String? Function(String?)? validator
+  }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-      validator: (v) {
+      inputFormatters: inputFormatters,
+      decoration: InputDecoration(
+        hintText: hint, 
+        prefixIcon: Icon(icon, color: brandBlue), 
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+      ),
+      validator: validator ?? (v) {
         if (isOptional) return null;
-        return v!.isEmpty ? "Required" : null;
+        return (v == null || v.isEmpty) ? "Required" : null;
       },
     );
   }
@@ -318,7 +320,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
       readOnly: true,
       onTap: onTap,
       decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-      validator: (v) => v!.isEmpty ? "Required" : null,
+      validator: (v) => (v == null || v.isEmpty) ? "Required" : null,
     );
   }
 }
