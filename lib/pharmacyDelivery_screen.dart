@@ -14,15 +14,13 @@ class PharmacyDeliveryScreen extends StatefulWidget {
 
 class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
   final TextEditingController _medicineController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
+  final TextEditingController _pharmacyNameController = TextEditingController();
+  final TextEditingController _pharmacyAddressController = TextEditingController();
+  final TextEditingController _pharmacyEmailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
 
-  bool _isChecking = false;
-  String _availabilityStatus = '';
-  bool _canPlaceOrder = false;
-  double _medicinePrice = 0.0;
-  final double _deliveryFee = 100.0;
-
+  bool _isSendingRequest = false;
   late String _effectivePatientId;
 
   @override
@@ -31,188 +29,161 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
     _effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid ?? "";
   }
 
-  final Map<String, double> _localInventory = {
-    'panadol': 50.0,
-    'paracetamol': 40.0,
-    'advil': 120.0,
-    'ibuprofen': 80.0,
-    'aspirin': 30.0,
-    'tylenol': 150.0,
-    'amoxicillin': 250.0,
-    'azithromycin': 450.0,
-    'cetirizine': 100.0,
-    'loratadine': 110.0,
-    'metformin': 200.0,
-    'atorvastatin': 600.0,
-    'amlodipine': 300.0,
-    'lisinopril': 350.0,
-    'omeprazole': 180.0,
-    'esomeprazole': 220.0,
-    'pantoprazole': 190.0,
-    'metoprolol': 280.0,
-    'simvastatin': 240.0,
-    'losartan': 320.0,
-    'albuterol': 800.0,
-    'fluticasone': 1200.0,
-    'montlukast': 550.0,
-    'gabapentin': 700.0,
-    'sertraline': 900.0,
-    'escitalopram': 850.0,
-    'fluoxetine': 750.0,
-    'alprazolam': 500.0,
-    'diazepam': 400.0,
-    'lorazepam': 450.0,
-    'tramadol': 350.0,
-    'hydrocodone': 1500.0,
-    'oxycodone': 1800.0,
-    'prednisone': 200.0,
-    'dexamethasone': 250.0,
-    'furosemide': 150.0,
-    'spironolactone': 400.0,
-    'warfarin': 600.0,
-    'clopidogrel': 700.0,
-    'levothyroxine': 300.0,
-    'insulin': 2500.0,
-    'rosuvastatin': 650.0,
-    'duloxetine': 950.0,
-    'venlafaxine': 880.0,
-    'bupropion': 920.0,
-    'ciprofloxacin': 400.0,
-    'doxycycline': 350.0,
-    'meloxicam': 280.0,
-    'celecoxib': 550.0,
-    'augmentin': 1200.0,
-  };
-
-  Future<void> _checkMedicineAndDelivery() async {
-    if (widget.isReadOnly) return;
-    final name = _medicineController.text.trim().toLowerCase();
-    if (name.isEmpty) return;
-
-    setState(() {
-      _isChecking = true;
-      _availabilityStatus = '';
-      _canPlaceOrder = false;
-    });
-
-    try {
-      if (_localInventory.containsKey(name)) {
-        setState(() {
-          _medicinePrice = _localInventory[name]!;
-          _availabilityStatus = "In Stock & Available for Home Delivery!";
-          _canPlaceOrder = true;
-        });
-        return;
-      }
-
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('medicines')
-          .where('name', isEqualTo: name)
-          .get();
-
-      if (querySnapshot.docs.isNotEmpty) {
-        final data = querySnapshot.docs.first.data();
-        final bool isAvailable = data['isAvailable'] ?? false;
-        final bool isDeliveryAvailable = data['deliveryAvailable'] ?? true;
-
-        if (isAvailable && isDeliveryAvailable) {
-          setState(() {
-            _medicinePrice = (data['price'] ?? 0).toDouble();
-            _availabilityStatus = "In Stock & Available for Home Delivery!";
-            _canPlaceOrder = true;
-          });
-        } else if (isAvailable && !isDeliveryAvailable) {
-          setState(() {
-            _availabilityStatus = "Medicine available in-store, but delivery service is disabled for this item.";
-          });
-        } else {
-          setState(() {
-            _availabilityStatus = "Medicine is currently out of stock.";
-          });
-        }
-      } else {
-        setState(() {
-          _availabilityStatus = "Medicine not found in pharmacy inventory.";
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _availabilityStatus = "Error checking inventory: $e";
-      });
-    } finally {
-      setState(() => _isChecking = false);
-    }
+  @override
+  void dispose() {
+    _medicineController.dispose();
+    _quantityController.dispose();
+    _pharmacyNameController.dispose();
+    _pharmacyAddressController.dispose();
+    _pharmacyEmailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
-  Future<void> _submitDeliveryOrder() async {
+  Future<void> _sendAvailabilityRequest() async {
     if (widget.isReadOnly) return;
-    if (_addressController.text.trim().isEmpty) {
+    
+    final name = _medicineController.text.trim();
+    final quantityStr = _quantityController.text.trim();
+    final pName = _pharmacyNameController.text.trim();
+    final pAddress = _pharmacyAddressController.text.trim();
+    final pEmail = _pharmacyEmailController.text.trim();
+    final pPhone = _phoneController.text.trim();
+
+    if (name.isEmpty || quantityStr.isEmpty || pName.isEmpty || pAddress.isEmpty || pEmail.isEmpty || pPhone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter complete delivery address")),
+        const SnackBar(content: Text("Please fill all details")),
       );
       return;
     }
 
-    final int quantity = int.tryParse(_quantityController.text.trim()) ?? 1;
-    if (quantity <= 0) {
+    // Validation Checks
+    if (RegExp(r'^[0-9]+$').hasMatch(name)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a valid quantity")),
+        const SnackBar(content: Text("Medicine name cannot be numeric alone")),
       );
       return;
     }
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (!RegExp(r'^[0-9]+$').hasMatch(quantityStr)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Quantity must be numeric")),
+      );
+      return;
+    }
 
-    final double totalBill = (_medicinePrice * quantity) + _deliveryFee;
+    if (RegExp(r'^[0-9]+$').hasMatch(pName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Pharmacy name cannot be numeric alone")),
+      );
+      return;
+    }
+
+    if (!pEmail.contains('@') || !pEmail.contains('.') || !pEmail.endsWith('@gmail.com')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Invalid email: must be in name@gmail.com format")),
+      );
+      return;
+    }
+    
+    final emailNamePart = pEmail.split('@')[0];
+    if (RegExp(r'^[0-9]+$').hasMatch(emailNamePart)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Email prefix cannot be numeric alone")),
+      );
+      return;
+    }
+
+    if (!RegExp(r'^[0-9]+$').hasMatch(pPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Phone number must be numeric")),
+      );
+      return;
+    }
+
+    final int quantity = int.tryParse(quantityStr) ?? 1;
+
+    setState(() => _isSendingRequest = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
       await FirebaseFirestore.instance.collection('medicine_orders').add({
         'userId': _effectivePatientId,
         'userEmail': user.email,
-        'medicineName': _medicineController.text.trim(),
+        'patientPhone': pPhone,
+        'medicineName': name,
         'quantity': quantity,
-        'deliveryAddress': _addressController.text.trim(),
-        'medicinePrice': _medicinePrice,
-        'deliveryFee': _deliveryFee,
-        'totalAmount': totalBill,
-        'paymentMethod': 'Cash on Delivery',
-        'deliveryStatus': 'Order Placed (Processing)',
-        'estimatedTime': '30 - 45 Minutes',
+        'pharmacyName': pName,
+        'pharmacyAddress': pAddress,
+        'pharmacyManagerEmail': pEmail.toLowerCase().trim(),
+        'deliveryStatus': 'Pending (Awaiting Confirmation)',
         'timestamp': FieldValue.serverTimestamp(),
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Delivery Order Placed Successfully! Pay cash on delivery.")),
+        const SnackBar(content: Text("Request sent to Pharmacy Manager!")),
       );
 
       _medicineController.clear();
-      _addressController.clear();
       _quantityController.clear();
-      setState(() {
-        _availabilityStatus = '';
-        _canPlaceOrder = false;
-      });
+      _pharmacyNameController.clear();
+      _pharmacyAddressController.clear();
+      _pharmacyEmailController.clear();
+      _phoneController.clear();
+      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to schedule delivery: $e")),
+        SnackBar(content: Text("Failed to send request: $e")),
       );
+    } finally {
+      setState(() => _isSendingRequest = false);
     }
+  }
+
+  Future<void> _showAddressDialog(String orderId) async {
+    final TextEditingController addressController = TextEditingController();
+    
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Enter Delivery Address"),
+        content: TextField(
+          controller: addressController,
+          decoration: const InputDecoration(
+            labelText: "Full Home / Hospital Address",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              if (addressController.text.trim().isEmpty) return;
+              
+              await FirebaseFirestore.instance.collection('medicine_orders').doc(orderId).update({
+                'deliveryAddress': addressController.text.trim(),
+                'deliveryStatus': 'Delivery Requested',
+              });
+              
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text("Confirm Delivery"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    int currentQuantity = int.tryParse(_quantityController.text) ?? 1;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Pharmacy Delivery Service", style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF1565C0),
         iconTheme: const IconThemeData(color: Colors.white),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false, // Remove back icon
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -220,11 +191,13 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (!widget.isReadOnly) ...[
+              const Text("Request Medicine Availability", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 15),
               TextField(
                 controller: _medicineController,
                 decoration: const InputDecoration(
-                  labelText: "Search Medicine for Delivery",
-                  prefixIcon: Icon(Icons.search),
+                  labelText: "Medicine Name",
+                  prefixIcon: Icon(Icons.medical_services),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -237,109 +210,59 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
                   prefixIcon: Icon(Icons.shopping_basket),
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (value) {
-                  setState(() {});
-                },
               ),
               const SizedBox(height: 15),
+              TextField(
+                controller: _pharmacyNameController,
+                decoration: const InputDecoration(
+                  labelText: "Pharmacy Name",
+                  prefixIcon: Icon(Icons.local_pharmacy),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _pharmacyAddressController,
+                decoration: const InputDecoration(
+                  labelText: "Pharmacy Address",
+                  prefixIcon: Icon(Icons.map),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _pharmacyEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: "Pharmacy Manager Email",
+                  prefixIcon: Icon(Icons.email),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: "Your Phone Number",
+                  prefixIcon: Icon(Icons.phone),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1565C0),
                   minimumSize: const Size(double.infinity, 50),
                 ),
-                onPressed: _isChecking ? null : _checkMedicineAndDelivery,
-                child: _isChecking
+                onPressed: _isSendingRequest ? null : _sendAvailabilityRequest,
+                child: _isSendingRequest
                     ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text("Check Delivery Availability", style: TextStyle(color: Colors.white)),
+                    : const Text("Send Request to Pharmacy", style: TextStyle(color: Colors.white)),
               ),
             ],
-            const SizedBox(height: 15),
-            if (_availabilityStatus.isNotEmpty && !widget.isReadOnly)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _canPlaceOrder ? Colors.green[50] : Colors.red[50],
-                  border: Border.all(color: _canPlaceOrder ? Colors.green : Colors.red),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _availabilityStatus,
-                  style: TextStyle(
-                    color: _canPlaceOrder ? Colors.green[900] : Colors.red[900],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            if (_canPlaceOrder && !widget.isReadOnly) ...[
-              const SizedBox(height: 20),
-              const Text("Delivery Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: "Full Home / Hospital Address",
-                  prefixIcon: Icon(Icons.location_on),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 15),
-              Card(
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Medicine Cost (x$currentQuantity):"),
-                          Text("Rs. ${(_medicinePrice * currentQuantity).toStringAsFixed(0)}"),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text("Home Delivery Fee:"),
-                          Text("Rs. ${_deliveryFee.toStringAsFixed(0)}"),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text("Total Payable (COD):", style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text(
-                            "Rs. ${(_medicinePrice * currentQuantity + _deliveryFee).toStringAsFixed(0)}",
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Row(
-                        children: [
-                          Icon(Icons.local_shipping, size: 16, color: Colors.grey),
-                          SizedBox(width: 5),
-                          Text("Est. Delivery Time: 30-45 Mins", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                onPressed: _submitDeliveryOrder,
-                icon: const Icon(Icons.pedal_bike, color: Colors.white),
-                label: const Text("Confirm & Request Delivery", style: TextStyle(color: Colors.white, fontSize: 16)),
-              ),
-            ],
-            const SizedBox(height: 20),
-            const Text("Order History", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 30),
+            const Text("Request History & Status", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -349,7 +272,8 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No orders found."));
+                if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No requests found."));
 
                 return ListView.builder(
                   shrinkWrap: true,
@@ -358,6 +282,9 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
                   itemBuilder: (context, index) {
                     var order = snapshot.data!.docs[index];
                     var data = order.data() as Map<String, dynamic>;
+                    String status = data['deliveryStatus'] ?? 'Pending';
+                    int quantity = data['quantity'] ?? 1;
+                    
                     return Dismissible(
                       key: Key(order.id),
                       direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
@@ -369,16 +296,96 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
                       ),
                       onDismissed: (direction) {
                         FirebaseFirestore.instance.collection('medicine_orders').doc(order.id).delete();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Order history deleted")),
-                        );
                       },
                       child: Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          title: Text("${data['medicineName']} (x${data['quantity']})"),
-                          subtitle: Text("Status: ${data['deliveryStatus']}\nTotal: Rs. ${data['totalAmount']}"),
-                          trailing: const Icon(Icons.local_shipping, color: Color(0xFF1565C0)),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text("${data['medicineName']} (x$quantity)", 
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  Icon(Icons.info_outline, color: _getStatusColor(status)),
+                                ],
+                              ),
+                              const Divider(),
+                              Text("Pharmacy: ${data['pharmacyName']}"),
+                              Text("Status: $status", style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold)),
+                              
+                              if (data['medicinePrice'] != null) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey[200]!),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("Medicine Cost (x$quantity):"),
+                                          Text("Rs. ${(data['medicinePrice'] * quantity).toStringAsFixed(0)}"),
+                                        ],
+                                      ),
+                                      const Divider(),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text("Home Delivery Fee:"),
+                                          Text("Rs. ${data['deliveryFee']?.toStringAsFixed(0) ?? '0'}"),
+                                        ],
+                                      ),
+                                      const Divider(),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text("Total Payable (COD):", style: TextStyle(fontWeight: FontWeight.bold)),
+                                          Text(
+                                            "Rs. ${data['totalAmount']?.toStringAsFixed(0) ?? '0'}",
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.local_shipping, size: 16, color: Colors.grey),
+                                          SizedBox(width: 5),
+                                          Text("Est. Delivery Time: 30-45 Mins", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                        ],
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              if (data['deliveryAddress'] != null) ...[
+                                const SizedBox(height: 5),
+                                Text("Delivery to: ${data['deliveryAddress']}", style: const TextStyle(fontWeight: FontWeight.w500)),
+                              ],
+                              
+                              const SizedBox(height: 10),
+                              if (status == 'In Stock (Provide Address)' && !widget.isReadOnly)
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    minimumSize: const Size(double.infinity, 45),
+                                  ),
+                                  onPressed: () => _showAddressDialog(order.id),
+                                  icon: const Icon(Icons.location_on, color: Colors.white),
+                                  label: const Text("Enter Delivery Address", style: TextStyle(color: Colors.white)),
+                                ),
+                              if (status == 'Delivery Requested')
+                                const Text("✓ Delivery is being arranged", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -390,5 +397,12 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    if (status.contains('In Stock')) return Colors.blue;
+    if (status.contains('Requested')) return Colors.green;
+    if (status.contains('Rejected') || status.contains('Out of Stock')) return Colors.red;
+    return Colors.orange;
   }
 }
