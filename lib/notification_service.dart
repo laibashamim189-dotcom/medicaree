@@ -8,17 +8,17 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'main.dart';
+import 'firebase_options.dart';
 import 'alarm_screen.dart';
 import 'DirectChatScreen.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (response.payload != null && response.payload!.isNotEmpty) {
     await NotificationService.handleActionLogic(response.payload!, response.actionId);
   }
@@ -26,7 +26,7 @@ void notificationTapBackground(NotificationResponse response) async {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint("Handling a background message: ${message.messageId}");
 }
 
@@ -46,7 +46,6 @@ class NotificationService {
       tz.setLocalLocation(tz.getLocation(timeZoneName));
 
       const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-      
       const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
@@ -61,53 +60,57 @@ class NotificationService {
 
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-      await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      if (Platform.isAndroid) {
+        final androidPlugin = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        
+        try {
+          await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel(
+            'chat_messages',
+            'Chat Messages',
+            description: 'Notifications for new messages',
+            importance: Importance.max,
+            playSound: true,
+            showBadge: true,
+          ));
+        } catch (e) {
+          debugPrint("Chat channel creation failed: $e");
+        }
 
-      // Listen for foreground messages
+        try {
+          await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel(
+            'medication_urgent_v9',
+            'Health Reminders',
+            description: 'Timely reminders for your health tasks',
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+          ));
+        } catch (e) {
+          debugPrint("Reminders channel creation failed: $e");
+        }
+      }
+
+      await _messaging.requestPermission(alert: true, badge: true, sound: true);
+
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint("Got a message whilst in the foreground!");
-        debugPrint("Message data: ${message.data}");
-
         String title = message.notification?.title ?? "New Message";
         String body = message.notification?.body ?? "";
-        
         if (message.notification == null && message.data.isNotEmpty) {
           title = message.data['title'] ?? "New Message";
           body = message.data['text'] ?? message.data['body'] ?? "";
         }
-
-        String channelId = 'chat_messages'; // Force chat channel for testing
-        
         showImmediateNotification(
           id: message.hashCode,
           title: title,
           body: body,
           payload: jsonEncode(message.data),
-          channelId: channelId,
+          channelId: 'chat_messages',
         );
       });
 
-      if (Platform.isAndroid) {
-        final androidPlugin = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-        const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
-          'chat_messages',
-          'Chat Messages',
-          description: 'Notifications for new messages',
-          importance: Importance.max, 
-          playSound: true,
-          enableVibration: true,
-          showBadge: true,
-        );
-        await androidPlugin?.createNotificationChannel(chatChannel);
-      }
-      
       updateFCMToken();
     } catch (e) {
-      debugPrint("Notification Init Error: $e");
+      debugPrint("Notification Service Init Error: $e");
     }
   }
 
@@ -116,17 +119,15 @@ class NotificationService {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         String? token = await _messaging.getToken();
-        debugPrint("FCM Token: $token"); // Debugging token
         if (token != null) {
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
               .set({'fcmToken': token}, SetOptions(merge: true));
-          debugPrint("Token updated in Firestore for user: ${user.uid}");
         }
       }
     } catch (e) {
-      debugPrint("Error updating FCM token: $e");
+      debugPrint("FCM token update error: $e");
     }
   }
 
@@ -134,37 +135,73 @@ class NotificationService {
     if (response.payload != null && response.payload!.isNotEmpty) {
       final Map<String, dynamic> data = jsonDecode(response.payload!);
       if (data['type'] == 'chat') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (context) => DirectChatScreen(
-              doctorId: data['doctorId'] ?? '',
-              patientId: data['patientId'] ?? '',
-              receiverName: data['senderName'] ?? 'Chat',
-            ),
+        navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (context) => DirectChatScreen(
+            doctorId: data['doctorId'] ?? '',
+            patientId: data['patientId'] ?? '',
+            receiverName: data['senderName'] ?? 'Chat',
           ),
-        );
-        return;
-      }
-      if (response.actionId == null) {
+        ));
+      } else if (response.actionId == null) {
         data['fullPayload'] = response.payload;
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => AlarmScreen(payload: data))
-        );
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => AlarmScreen(payload: data)));
       } else {
         handleActionLogic(response.payload!, response.actionId);
       }
     }
   }
 
-  static Future<void> handleActionLogic(String payload, String? actionId) async {
+  static Future<void> handleActionLogic(String payload, String? actionId, {String? performedBy}) async {
     try {
       final Map<String, dynamic> data = jsonDecode(payload);
       final String docId = data['docId'] ?? '';
+      final String userId = data['userId'] ?? FirebaseAuth.instance.currentUser?.uid ?? '';
+      final String type = data['type'] ?? 'Reminder';
+      final String title = data['title'] ?? 'Reminder';
+
       if (docId.isEmpty) return;
-      String status = (actionId == 'action_taken') ? "Done" : "Missed";
+
+      String status = "Missed";
+      String? localPerformedBy = performedBy;
+
+      // Handle actions from tray
+      if (actionId == 'action_patient') {
+        status = "Done";
+        localPerformedBy = "Patient";
+      } else if (actionId == 'action_caregiver') {
+        status = "Done";
+        localPerformedBy = "Caregiver";
+      } else if (actionId == 'action_taken') {
+        status = "Done";
+      }
+
       await FirebaseFirestore.instance.collection('reminders').doc(docId).update({'status': status});
+
+      String historyStatus = status;
+      if (status == "Done") {
+        if (type.toLowerCase() == 'medication') historyStatus = 'Taken';
+        else if (type.toLowerCase() == 'measurement') historyStatus = 'Measured';
+        else if (type.toLowerCase() == 'activity') historyStatus = 'Completed';
+        else if (type.toLowerCase() == 'appointment') historyStatus = 'Attended';
+      }
+
+      // Add "by Patient/Caregiver" info to history
+      if (localPerformedBy != null) {
+        historyStatus = "$historyStatus (by $localPerformedBy)";
+      }
+
+      DateTime now = DateTime.now();
+      await FirebaseFirestore.instance.collection('user_history').add({
+        'userId': userId,
+        'title': title,
+        'category': type,
+        'status': historyStatus,
+        'date': DateFormat('yyyy-MM-dd').format(now),
+        'time': DateFormat('h:mm a').format(now),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
-      debugPrint("Action Logic Error: $e");
+      debugPrint("Action logic error: $e");
     }
   }
 
@@ -175,16 +212,20 @@ class NotificationService {
     String? payload,
     String channelId = 'chat_messages',
   }) async {
-    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      channelId,
-      'Chat Messages',
-      importance: Importance.max,
-      priority: Priority.max,
-      showWhen: true,
-      playSound: true,
-      ticker: 'ticker',
+    await _notifications.show(
+      id,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          'Notifications',
+          importance: Importance.max,
+          priority: Priority.max,
+        ),
+      ),
+      payload: payload,
     );
-    await _notifications.show(id, title, body, NotificationDetails(android: androidDetails), payload: payload);
   }
 
   static Future<void> scheduleNotification({
@@ -206,9 +247,10 @@ class NotificationService {
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'medication_urgent_v9',
-            'Urgent Medication Alarms',
+            'Health Reminders',
             importance: Importance.max,
             priority: Priority.max,
+            playSound: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -216,7 +258,7 @@ class NotificationService {
         payload: jsonEncode({'docId': docId, 'type': type, 'title': title, 'userId': userId ?? ''}),
       );
     } catch (e) {
-      debugPrint("Scheduling Error: $e");
+      debugPrint("Scheduling error: $e");
     }
   }
 }
