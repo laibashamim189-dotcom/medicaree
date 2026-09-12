@@ -189,6 +189,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isUploading = false;
   String? _currentImageUrl;
+  static const Color brandBlue = Color(0xFF1565C0);
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
@@ -230,7 +231,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
+            child: const Text("Cancel", style: TextStyle(color: Color(0xFF1565C0), fontWeight: FontWeight.bold)),
           ),
           TextButton(
             onPressed: () async {
@@ -256,7 +257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (mounted) setState(() => _isUploading = false);
               }
             },
-            child: const Text("Remove", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
+            child: const Text("Remove", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -278,19 +279,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: brandBlue),
                     onPressed: () => Navigator.pop(context),
                   ),
                   const Expanded(
                     child: Text(
                       "Profile picture",
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandBlue),
                     ),
                   ),
                   _currentImageUrl != null 
                     ? IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.black54),
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                         onPressed: () {
                           Navigator.pop(context);
                           _removeProfilePhoto();
@@ -303,16 +304,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Divider(height: 1),
             const SizedBox(height: 10),
             ListTile(
-              leading: const Icon(Icons.image_outlined, color: Colors.black87),
-              title: const Text("Gallery"),
+              leading: const Icon(Icons.image_outlined, color: brandBlue),
+              title: const Text("Gallery", style: TextStyle(color: brandBlue, fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.gallery);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt_outlined, color: Colors.black87),
-              title: const Text("Camera"),
+              leading: const Icon(Icons.camera_alt_outlined, color: brandBlue),
+              title: const Text("Camera", style: TextStyle(color: brandBlue, fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.camera);
@@ -327,8 +328,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color brandBlue = Color(0xFF1565C0);
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: ListView(
@@ -397,7 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: const BoxDecoration(
-                                      color: Color(0xFF607D8B),
+                                      color: brandBlue,
                                       shape: BoxShape.circle,
                                       boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
                                     ),
