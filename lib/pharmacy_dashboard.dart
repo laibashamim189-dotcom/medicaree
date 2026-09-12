@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'login_screen.dart';
 
 class PharmacyDashboard extends StatefulWidget {
@@ -34,6 +35,28 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed to update order: $e")),
+        );
+      }
+    }
+  }
+
+  // Soft delete logic for pharmacy orders
+  Future<void> _performSoftDelete(String orderId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('medicine_orders')
+          .doc(orderId)
+          .update({'deletedByPharmacy': true});
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Order removed from dashboard")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
         );
       }
     }
@@ -102,6 +125,7 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           title: const Text("Pharmacy Dashboard"),
           backgroundColor: brandBlue,
           foregroundColor: Colors.white,
@@ -143,7 +167,6 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
   }
 
   Widget _buildOrderList(String managerEmail, {required bool isIncoming}) {
-    // Only filter by manager email to use a simple index
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('medicine_orders')
@@ -166,9 +189,11 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
           return Center(child: Text(isIncoming ? "No new incoming requests" : "No accepted requests"));
         }
 
-        // Local filtering by status
+        // Local filtering by status and delete flag
         final filteredDocs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          if (data['deletedByPharmacy'] == true) return false;
+          
           final status = data['deliveryStatus'] ?? '';
           if (isIncoming) {
             return status == 'Pending (Awaiting Confirmation)';
@@ -182,7 +207,7 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
           }
         }).toList();
 
-        // Local sorting by timestamp descending
+        // Sorting by timestamp descending
         filteredDocs.sort((a, b) {
           final dataA = a.data() as Map<String, dynamic>;
           final dataB = b.data() as Map<String, dynamic>;
@@ -207,7 +232,7 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
             var data = order.data() as Map<String, dynamic>;
             String status = data['deliveryStatus'] ?? 'Pending';
 
-            return Card(
+            Widget cardContent = Card(
               margin: const EdgeInsets.only(bottom: 15),
               elevation: 3,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -240,6 +265,7 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
                     ),
                     const SizedBox(height: 10),
                     Text("Patient: ${data['userEmail'] ?? 'N/A'}"),
+                    Text("Phone: ${data['patientPhone'] ?? 'N/A'}"), // Added Patient Phone Number
                     Text("Quantity: ${data['quantity']}"),
                     if (data['medicinePrice'] != null)
                        Text("Medicine Cost: Rs. ${data['medicinePrice']}"),
@@ -291,6 +317,28 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
                 ),
               ),
             );
+
+            if (!isIncoming) {
+              return Slidable(
+                key: Key(order.id),
+                endActionPane: ActionPane(
+                  motion: const ScrollMotion(),
+                  extentRatio: 0.2,
+                  dismissible: DismissiblePane(onDismissed: () => _performSoftDelete(order.id)),
+                  children: [
+                    SlidableAction(
+                      onPressed: (context) => _performSoftDelete(order.id),
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.grey,
+                      icon: Icons.delete,
+                    ),
+                  ],
+                ),
+                child: cardContent,
+              );
+            }
+
+            return cardContent;
           },
         );
       },
