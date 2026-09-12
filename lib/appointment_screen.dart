@@ -123,14 +123,17 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     if (_selectedTime == null || _selectedDate == null) return;
 
     try {
+      final String setDate = _dateController.text;
+      final String setTime = _timeController.text;
       DateTime scheduleTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, _selectedTime!.hour, _selectedTime!.minute);
+      
       final docRef = await FirebaseFirestore.instance.collection('reminders').add({
         'userId': _effectivePatientId,
         'title': "Appt: ${_docController.text.trim()}",
         'doctorName': _docController.text.trim(),
         'specialty': _specialtyController.text.trim(),
-        'time': _timeController.text,
-        'date': _dateController.text,
+        'time': setTime,
+        'date': setDate,
         'type': 'appointment',
         'status': 'Pending',
         'timestamp': FieldValue.serverTimestamp(),
@@ -139,14 +142,22 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       await NotificationService.scheduleNotification(
         id: docRef.id.hashCode,
         title: "Appointment Reminder",
-        body: "Meeting with ${_docController.text.trim()} at ${_timeController.text}",
+        body: "Meeting with ${_docController.text.trim()} at $setTime",
         scheduledDate: scheduleTime,
         docId: docRef.id,
         type: 'appointment',
         userId: _effectivePatientId,
       );
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Reminder set for $setDate at $setTime"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       debugPrint("Save Error: $e");
     }
