@@ -159,6 +159,9 @@ class _MedicationScreenState extends State<MedicationScreen> {
     try {
       final String medicineName = _nameController.text.trim();
       final String dosage = _dosageController.text.trim();
+      final String setDate = _dateController.text;
+      final String setTime = _timeController.text;
+
       DateTime scheduleTime = DateTime(
         _selectedDate!.year, 
         _selectedDate!.month, 
@@ -171,8 +174,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
         'userId': _effectivePatientId,
         'title': medicineName,
         'dosage': dosage,
-        'time': _timeController.text,
-        'date': _dateController.text,
+        'time': setTime,
+        'date': setDate,
         'type': 'medication',
         'status': 'Pending',
         'frequency': selectedFrequency,
@@ -190,7 +193,15 @@ class _MedicationScreenState extends State<MedicationScreen> {
         userId: _effectivePatientId,
       );
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Reminder set for $setDate at $setTime"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
       _nameController.clear();
       _dosageController.clear();
       _stockController.clear();
@@ -206,7 +217,7 @@ class _MedicationScreenState extends State<MedicationScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Medications", style: TextStyle(color: Colors.white)),
+        title: const Text("Medication Reminders", style: TextStyle(color: Colors.white)),
         backgroundColor: brandBlue,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
