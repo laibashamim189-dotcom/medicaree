@@ -323,7 +323,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
           _buildRecItem("Managed By", recs['managedBy'] ?? "Patient"),
           const SizedBox(height: 20),
           Row(children: [
-            Expanded(child: ElevatedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PaymentScreen())), icon: const Icon(Icons.credit_card, size: 18), label: const Text("Pay Doctor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))))),
+            Expanded(child: ElevatedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PaymentScreen(initialDoctorId: data['doctorId']))), icon: const Icon(Icons.credit_card, size: 18), label: const Text("Pay Doctor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))))),
             const SizedBox(width: 10),
             Expanded(child: _buildChatButtonWithBadge(data['doctorId'] ?? "", data['doctorName'] ?? "Doctor")),
           ]),
