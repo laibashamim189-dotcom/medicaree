@@ -29,6 +29,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
   late String chatId;
   late String receiverId;
+  final Set<String> _selectedMessageIds = {};
 
   @override
   void initState() {
@@ -72,15 +73,88 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     }, SetOptions(merge: true));
   }
 
+  void _showDeleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Text("Delete ${_selectedMessageIds.length} messages?"),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        actions: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                  _performDelete();
+                  Navigator.pop(context);
+                },
+                child: const Text("Delete for everyone", 
+                  style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              TextButton(
+                onPressed: () {
+                  _performDelete();
+                  Navigator.pop(context);
+                },
+                child: const Text("Delete for me", 
+                  style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel", 
+                  style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _performDelete() async {
+    if (_selectedMessageIds.isEmpty) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (String msgId in _selectedMessageIds) {
+      batch.delete(FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(msgId));
+    }
+
+    await batch.commit();
+    setState(() {
+      _selectedMessageIds.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color brandBlue = Color(0xFF1565C0);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.receiverName),
+        leading: _selectedMessageIds.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() => _selectedMessageIds.clear()),
+              )
+            : null,
+        title: _selectedMessageIds.isEmpty
+            ? Text(widget.receiverName)
+            : Text("${_selectedMessageIds.length}"),
         backgroundColor: brandBlue,
         foregroundColor: Colors.white,
+        actions: [
+          if (_selectedMessageIds.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.green),
+              onPressed: _showDeleteDialog,
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -102,19 +176,43 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                   padding: const EdgeInsets.all(12),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final data = messages[index].data() as Map<String, dynamic>;
+                    final doc = messages[index];
+                    final data = doc.data() as Map<String, dynamic>;
                     final bool isMe = data['senderId'] == currentUserId;
+                    final String msgId = doc.id;
+                    final bool isSelected = _selectedMessageIds.contains(msgId);
 
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    return GestureDetector(
+                      onLongPress: () {
+                        setState(() {
+                          _selectedMessageIds.add(msgId);
+                        });
+                      },
+                      onTap: () {
+                        if (_selectedMessageIds.isNotEmpty) {
+                          setState(() {
+                            if (isSelected) {
+                              _selectedMessageIds.remove(msgId);
+                            } else {
+                              _selectedMessageIds.add(msgId);
+                            }
+                          });
+                        }
+                      },
                       child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isMe ? brandBlue : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(12),
+                        color: isSelected ? Colors.green.withOpacity(0.1) : Colors.transparent,
+                        child: Align(
+                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isMe ? brandBlue : Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(data['text'] ?? "", style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
+                          ),
                         ),
-                        child: Text(data['text'] ?? "", style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
                       ),
                     );
                   },
