@@ -133,12 +133,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     setState(() => _isSaving = true);
     try {
+      final String setDate = _dateController.text;
+      final String setTime = _timeController.text;
       final String activityTitle = _titleController.text.isEmpty ? selectedActivityType : _titleController.text.trim();
+      
       final docRef = await FirebaseFirestore.instance.collection('reminders').add({
         'userId': _effectivePatientId,
         'title': activityTitle,
-        'time': _timeController.text,
-        'date': _dateController.text,
+        'time': setTime,
+        'date': setDate,
         'type': 'activity',
         'duration': _durationController.text.trim(),
         'frequency': selectedFrequency,
@@ -157,7 +160,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
         userId: _effectivePatientId,
       );
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Reminder set for $setDate at $setTime"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       debugPrint("Save Error: $e");
     } finally {
@@ -169,7 +180,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Activities", style: TextStyle(color: Colors.white)), backgroundColor: brandBlue, iconTheme: const IconThemeData(color: Colors.white)),
+      appBar: AppBar(title: const Text("Activities Reminders", style: TextStyle(color: Colors.white)), backgroundColor: brandBlue, iconTheme: const IconThemeData(color: Colors.white)),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('reminders').where('userId', isEqualTo: _effectivePatientId).where('type', isEqualTo: 'activity').orderBy('timestamp', descending: true).snapshots(),
         builder: (context, snapshot) {
