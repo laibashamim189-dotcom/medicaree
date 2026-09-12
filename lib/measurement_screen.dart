@@ -115,13 +115,16 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
                   onPressed: _isSaving ? null : () async {
                     setDialogState(() => _isSaving = true);
                     try {
+                      final String setDate = DateFormat('yyyy-MM-dd').format(selectedDate);
+                      final String setTime = selectedTime.format(context);
                       final scheduledDateTime = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute);
+                      
                       final docRef = await _firestore.collection('reminders').add({
                         'userId': _effectivePatientId,
                         'title': selectedCategory,
                         'type': 'measurement',
-                        'date': DateFormat('yyyy-MM-dd').format(selectedDate),
-                        'time': selectedTime.format(context),
+                        'date': setDate,
+                        'time': setTime,
                         'frequency': selectedFrequency,
                         'status': 'Pending',
                         'timestamp': FieldValue.serverTimestamp(),
@@ -137,7 +140,15 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
                         userId: _effectivePatientId,
                       );
 
-                      if (mounted) Navigator.pop(context);
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Reminder set for $setDate at $setTime"),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
                     } catch (e) {
                       debugPrint("Save Error: $e");
                     } finally {
