@@ -112,9 +112,14 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
               final String date = data['date'] ?? '';
               final String time = data['time'] ?? '';
               
-              Color statusColor = (status == 'Taken' || status == 'Measured' || status == 'Completed' || status == 'Attended' || status == 'Done') 
-                  ? Colors.green 
-                  : Colors.red;
+              // Check if status represents a completed action, even with "by Patient/Caregiver" suffix
+              bool isSuccess = status.startsWith('Taken') || 
+                               status.startsWith('Measured') || 
+                               status.startsWith('Completed') || 
+                               status.startsWith('Attended') || 
+                               status.startsWith('Done');
+              
+              Color statusColor = isSuccess ? Colors.green : Colors.red;
 
               return Dismissible(
                 key: Key(doc.id),
@@ -139,7 +144,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
                     contentPadding: const EdgeInsets.all(16),
                     leading: CircleAvatar(
                       backgroundColor: statusColor.withOpacity(0.1),
-                      child: Icon(statusColor == Colors.green ? Icons.check_circle_outline : Icons.cancel_outlined, color: statusColor),
+                      child: Icon(isSuccess ? Icons.check_circle_outline : Icons.cancel_outlined, color: statusColor),
                     ),
                     title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("$category\n$date at $time", style: const TextStyle(fontSize: 12)),
