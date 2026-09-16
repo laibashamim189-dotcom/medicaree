@@ -113,6 +113,131 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
     }
   }
 
+  TimeOfDay _parseTimeString(String timeStr, BuildContext context) {
+    try {
+      final parts = timeStr.split(':');
+      var hour = int.parse(parts[0]);
+      final minuteParts = parts[1].split(' ');
+      final minute = int.parse(minuteParts[0]);
+      final isPm = timeStr.toLowerCase().contains('pm');
+      if (isPm && hour != 12) hour += 12;
+      if (!isPm && hour == 12) hour = 0;
+      return TimeOfDay(hour: hour, minute: minute);
+    } catch (e) {
+      return TimeOfDay.now();
+    }
+  }
+
+  void _showEditAppointmentDialog(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    _apptDocNameController.text = data['doctorName'] ?? "";
+    _apptSpecialtyController.text = data['specialty'] ?? "";
+    _apptDateController.text = data['date'] ?? "";
+    _apptTimeController.text = data['time'] ?? "";
+
+    try {
+      _apptSelectedDate = DateFormat('yyyy-MM-dd').parse(data['date']);
+      _apptSelectedTime = _parseTimeString(data['time'], context);
+    } catch (e) {
+      debugPrint("Parsing error: $e");
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+          contentPadding: const EdgeInsets.all(25),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Edit Appointment", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 25),
+                Form(key: _apptFormKey, child: Column(children: [
+                  _buildDialogTextField(_apptDocNameController, "Doctor Name", Icons.person),
+                  const SizedBox(height: 15),
+                  _buildDialogTextField(_apptSpecialtyController, "Specialty", Icons.medical_services),
+                  const SizedBox(height: 15),
+                  _buildDialogPickerField(_apptDateController, "Select Date", Icons.calendar_today, () async {
+                    DateTime? picked = await showDatePicker(context: context, initialDate: _apptSelectedDate ?? DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100));
+                    if (picked != null) setDialogState(() { _apptSelectedDate = picked; _apptDateController.text = DateFormat('yyyy-MM-dd').format(picked); });
+                  }),
+                  const SizedBox(height: 15),
+                  _buildDialogPickerField(_apptTimeController, "Time", Icons.access_time, () async {
+                    TimeOfDay? picked = await showTimePicker(context: context, initialTime: _apptSelectedTime ?? TimeOfDay.now());
+                    if (picked != null) setDialogState(() { _apptSelectedTime = picked; _apptTimeController.text = picked.format(context); });
+                  }),
+                ])),
+                const SizedBox(height: 30),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                        ),
+                        child: const Text("Cancel", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (!_apptFormKey.currentState!.validate()) return;
+                          
+                          await doc.reference.update({
+                            'title': "Appt: ${_apptDocNameController.text.trim()}",
+                            'doctorName': _apptDocNameController.text.trim(),
+                            'specialty': _apptSpecialtyController.text.trim(),
+                            'date': _apptDateController.text,
+                            'time': _apptTimeController.text,
+                          });
+                          
+                          if (_apptSelectedDate != null && _apptSelectedTime != null) {
+                            DateTime scheduleTime = DateTime(_apptSelectedDate!.year, _apptSelectedDate!.month, _apptSelectedDate!.day, _apptSelectedTime!.hour, _apptSelectedTime!.minute);
+                            await NotificationService.scheduleNotification(
+                              id: doc.id.hashCode,
+                              title: "Appointment Reminder",
+                              body: "Meeting with ${_apptDocNameController.text.trim()} at ${_apptTimeController.text}",
+                              scheduledDate: scheduleTime,
+                              docId: doc.id,
+                              type: 'appointment',
+                              userId: _effectivePatientId,
+                            );
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("updated ${_apptDocNameController.text.trim()} reminder set successfully"),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.pop(context);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: brandBlue,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                          elevation: 0,
+                        ),
+                        child: const Text("Update", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _sendDoctorRequest() async {
     if (widget.isReadOnly || !_doctorFormKey.currentState!.validate()) return;
     setState(() => _isSending = true);
@@ -243,7 +368,19 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
                   leading: CircleAvatar(backgroundColor: brandBlue.withOpacity(0.1), child: const Icon(Icons.calendar_today, color: brandBlue)),
                   title: Text(doc['doctorName'] ?? "Doctor", style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text("${doc['date']} at ${doc['time']}"),
-                  trailing: const Icon(Icons.notifications_active, color: brandBlue, size: 20),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.notifications_active, color: brandBlue, size: 20),
+                      if (!widget.isReadOnly) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: brandBlue, size: 20),
+                          onPressed: () => _showEditAppointmentDialog(doc),
+                        ),
+                      ]
+                    ],
+                  ),
                 ),
               ),
             );
