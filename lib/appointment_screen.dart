@@ -6,7 +6,8 @@ import 'notification_service.dart';
 
 class AppointmentScreen extends StatefulWidget {
   final String? patientId;
-  const AppointmentScreen({super.key, this.patientId});
+  final bool isReadOnly;
+  const AppointmentScreen({super.key, this.patientId, this.isReadOnly = false});
 
   @override
   State<AppointmentScreen> createState() => _AppointmentScreenState();
@@ -69,7 +70,103 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     }
   }
 
+  TimeOfDay _parseTimeString(String timeStr, BuildContext context) {
+    try {
+      final parts = timeStr.split(':');
+      var hour = int.parse(parts[0]);
+      final minuteParts = parts[1].split(' ');
+      final minute = int.parse(minuteParts[0]);
+      final isPm = timeStr.toLowerCase().contains('pm');
+      if (isPm && hour != 12) hour += 12;
+      if (!isPm && hour == 12) hour = 0;
+      return TimeOfDay(hour: hour, minute: minute);
+    } catch (e) {
+      return TimeOfDay.now();
+    }
+  }
+
+  void _showEditAppointmentDialog(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    _docController.text = data['doctorName'] ?? "";
+    _specialtyController.text = data['specialty'] ?? "";
+    _dateController.text = data['date'] ?? "";
+    _timeController.text = data['time'] ?? "";
+
+    try {
+      _selectedDate = DateFormat('yyyy-MM-dd').parse(data['date']);
+      _selectedTime = _parseTimeString(data['time'], context);
+    } catch (e) {
+      debugPrint("Parsing error: $e");
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Edit Appointment", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  _buildDialogField(_docController, "Doctor / Clinic Name", Icons.medical_services),
+                  const SizedBox(height: 15),
+                  _buildDialogField(_specialtyController, "Specialty / Reason", Icons.badge),
+                  const SizedBox(height: 15),
+                  _buildPickerField(_dateController, "Select Date", Icons.calendar_today, () => _selectDate(context)),
+                  const SizedBox(height: 15),
+                  _buildPickerField(_timeController, "Select Time", Icons.access_time, () => _selectTime(context)),
+                  const SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (!_formKey.currentState!.validate()) return;
+                          
+                          await doc.reference.update({
+                            'title': "Appt: ${_docController.text.trim()}",
+                            'doctorName': _docController.text.trim(),
+                            'specialty': _specialtyController.text.trim(),
+                            'date': _dateController.text,
+                            'time': _timeController.text,
+                          });
+                          
+                          if (_selectedDate != null && _selectedTime != null) {
+                            DateTime scheduleTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, _selectedTime!.hour, _selectedTime!.minute);
+                            await NotificationService.scheduleNotification(
+                              id: doc.id.hashCode,
+                              title: "Appointment Reminder",
+                              body: "Meeting with ${_docController.text.trim()} at ${_timeController.text}",
+                              scheduledDate: scheduleTime,
+                              docId: doc.id,
+                              type: 'appointment',
+                              userId: _effectivePatientId,
+                            );
+                          }
+                          if (mounted) Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
+                        child: const Text("Update", style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showAddAppointmentDialog() {
+    if (widget.isReadOnly) return;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -182,6 +279,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
               var data = doc.data() as Map<String, dynamic>;
               return Dismissible(
                 key: Key(doc.id),
+                direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
                 onDismissed: (_) => FirebaseFirestore.instance.collection('reminders').doc(doc.id).delete(),
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -192,6 +290,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     leading: CircleAvatar(backgroundColor: brandBlue.withOpacity(0.1), child: const Icon(Icons.event, color: brandBlue)),
                     title: Text(data['doctorName'] ?? "Doctor", style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("${data['date']} at ${data['time']}\nSpecialty: ${data['specialty'] ?? ''}"),
+                    trailing: !widget.isReadOnly ? IconButton(
+                      icon: const Icon(Icons.edit, color: brandBlue, size: 20),
+                      onPressed: () => _showEditAppointmentDialog(doc),
+                    ) : null,
                   ),
                 ),
               );
@@ -199,7 +301,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(onPressed: _showAddAppointmentDialog, backgroundColor: brandBlue, child: const Icon(Icons.add, color: Colors.white)),
+      floatingActionButton: widget.isReadOnly ? null : FloatingActionButton(onPressed: _showAddAppointmentDialog, backgroundColor: brandBlue, child: const Icon(Icons.add, color: Colors.white)),
     );
   }
 
