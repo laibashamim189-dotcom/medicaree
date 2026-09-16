@@ -175,7 +175,32 @@ class NotificationService {
         status = "Done";
       }
 
-      await FirebaseFirestore.instance.collection('reminders').doc(docId).update({'status': status});
+      final docRef = FirebaseFirestore.instance.collection('reminders').doc(docId);
+      await docRef.update({'status': status});
+
+      if (status == "Done" && type.toLowerCase() == 'medication') {
+        final docSnap = await docRef.get();
+        if (docSnap.exists) {
+          final reminderData = docSnap.data();
+          final String stockStr = reminderData?['stock'] ?? "";
+          if (stockStr.isNotEmpty) {
+            int currentStock = int.tryParse(stockStr) ?? 0;
+            if (currentStock > 0) {
+              int newStock = currentStock - 1;
+              await docRef.update({'stock': newStock.toString()});
+              
+              if (newStock <= 3) {
+                await showImmediateNotification(
+                  id: docId.hashCode,
+                  title: "Refill Reminder: $title",
+                  body: "Low stock alert! Only $newStock doses left. Please refill your medicine.",
+                  channelId: 'medication_urgent_v9',
+                );
+              }
+            }
+          }
+        }
+      }
 
       String historyStatus = status;
       if (status == "Done") {
