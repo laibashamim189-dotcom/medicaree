@@ -14,6 +14,7 @@ class EmergencyContactsScreen extends StatefulWidget {
 
 class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   late String _effectivePatientId;
+  static const Color brandBlue = Color(0xFF1565C0);
 
   @override
   void initState() {
@@ -116,9 +117,10 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
         }
 
         return Scaffold(
+          backgroundColor: Colors.white,
           appBar: AppBar(
             title: const Text("Emergency Contacts", style: TextStyle(color: Colors.white)),
-            backgroundColor: const Color(0xFF1565C0),
+            backgroundColor: brandBlue,
             iconTheme: const IconThemeData(color: Colors.white),
           ),
           body: ListView.builder(
@@ -152,7 +154,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
           ),
           floatingActionButton: widget.isReadOnly ? null : FloatingActionButton(
             onPressed: _showAddManualDialog,
-            backgroundColor: const Color(0xFF634D1F),
+            backgroundColor: brandBlue,
             child: const Icon(Icons.add, color: Colors.white),
           ),
         );
@@ -164,7 +166,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
 
   Widget _buildEmptyState() {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F2EE),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -220,7 +222,7 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                   icon: const Icon(Icons.add, color: Colors.white),
                   label: const Text("Add contact", style: TextStyle(color: Colors.white, fontSize: 16)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF634D1F),
+                    backgroundColor: brandBlue,
                     padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                   ),
