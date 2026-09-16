@@ -21,11 +21,17 @@ class _MedicationScreenState extends State<MedicationScreen> {
   final _stockController = TextEditingController();
   final _dateController = TextEditingController();
   final _timeController = TextEditingController();
+  final _timeController2 = TextEditingController();
+  final _timeController3 = TextEditingController();
   
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
+  TimeOfDay? _selectedTime2;
+  TimeOfDay? _selectedTime3;
   
+  String selectedFrequencyType = 'Everyday';
   String selectedFrequency = 'Once a day';
+  List<DateTime> _selectedDates = [];
   bool _isSaving = false;
   static const Color brandBlue = Color(0xFF1565C0);
 
@@ -46,6 +52,8 @@ class _MedicationScreenState extends State<MedicationScreen> {
     _stockController.dispose();
     _dateController.dispose();
     _timeController.dispose();
+    _timeController2.dispose();
+    _timeController3.dispose();
     super.dispose();
   }
 
@@ -64,13 +72,235 @@ class _MedicationScreenState extends State<MedicationScreen> {
     }
   }
 
-  Future<void> _selectTime(BuildContext context) async {
+  Future<void> _addSpecificDate(BuildContext context, StateSetter setDialogState) async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setDialogState(() {
+        if (!_selectedDates.any((d) => DateFormat('yyyy-MM-dd').format(d) == DateFormat('yyyy-MM-dd').format(picked))) {
+          _selectedDates.add(picked);
+          _selectedDates.sort();
+        }
+      });
+    }
+  }
+
+  Future<void> _selectTime(BuildContext context, int index, {StateSetter? setDialogState}) async {
     TimeOfDay? picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
     if (picked != null) {
-      setState(() {
-        _selectedTime = picked;
-        _timeController.text = picked.format(context);
-      });
+      void update() {
+        if (index == 1) {
+          _selectedTime = picked;
+          _timeController.text = picked.format(context);
+        } else if (index == 2) {
+          _selectedTime2 = picked;
+          _timeController2.text = picked.format(context);
+        } else if (index == 3) {
+          _selectedTime3 = picked;
+          _timeController3.text = picked.format(context);
+        }
+      }
+      if (setDialogState != null) {
+        setDialogState(update);
+      } else {
+        setState(update);
+      }
+    }
+  }
+
+  void _showEditMedicationDialog(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    _nameController.text = data['title'] ?? "";
+    _dosageController.text = data['dosage'] ?? "";
+    _stockController.text = data['stock'] ?? "";
+    _dateController.text = data['date'] ?? "";
+    
+    List<dynamic> times = [];
+    if (data['times'] != null) {
+      times = data['times'];
+    } else if (data['time'] != null) {
+      times = [data['time']];
+    }
+
+    _timeController.text = times.isNotEmpty ? times[0] : "";
+    _timeController2.text = times.length > 1 ? times[1] : "";
+    _timeController3.text = times.length > 2 ? times[2] : "";
+
+    String currentFreq = data['frequency'] ?? "";
+    String freqType = 'Everyday';
+    String freqTimes = 'Once a day';
+    
+    if (currentFreq.contains('Specific Dates')) {
+      freqType = 'Specific Dates';
+    } else if (currentFreq.contains('Everyday')) {
+      freqType = 'Everyday';
+    } else if (['Once a day', 'Twice a day', '3 times a day'].contains(currentFreq)) {
+      freqType = currentFreq;
+      freqTimes = currentFreq;
+    }
+
+    if (currentFreq.contains('Once a day')) freqTimes = 'Once a day';
+    else if (currentFreq.contains('Twice a day')) freqTimes = 'Twice a day';
+    else if (currentFreq.contains('3 times a day')) freqTimes = '3 times a day';
+
+    try {
+      _selectedDate = DateFormat('yyyy-MM-dd').parse(data['date']);
+      if (times.isNotEmpty) _selectedTime = _parseTimeString(times[0], context);
+      if (times.length > 1) _selectedTime2 = _parseTimeString(times[1], context);
+      if (times.length > 2) _selectedTime3 = _parseTimeString(times[2], context);
+    } catch (e) {
+      debugPrint("Parsing error: $e");
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Edit Medication", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  _buildDialogField(_nameController, "Medicine Name", Icons.medication),
+                  const SizedBox(height: 15),
+                  _buildDialogField(_dosageController, "Dosage", Icons.science),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    value: freqType,
+                    decoration: InputDecoration(labelText: "Frequency Type", prefixIcon: const Icon(Icons.calendar_month, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                    items: ['Once a day', 'Twice a day', '3 times a day', 'Everyday', 'Specific Dates'].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+                    onChanged: (v) {
+                      setDialogState(() {
+                        freqType = v!;
+                        if (v == 'Once a day' || v == 'Twice a day' || v == '3 times a day') {
+                          freqTimes = v!;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  if (freqType == 'Everyday' || freqType == 'Specific Dates')
+                    DropdownButtonFormField<String>(
+                      value: freqTimes,
+                      decoration: InputDecoration(labelText: "Times per day", prefixIcon: const Icon(Icons.repeat, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                      items: ['Once a day', 'Twice a day', '3 times a day'].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+                      onChanged: (v) => setDialogState(() => freqTimes = v!),
+                    ),
+                  const SizedBox(height: 15),
+                  _buildPickerField(_dateController, "Date", Icons.calendar_today, () => _selectDate(context)),
+                  const SizedBox(height: 15),
+                  _buildPickerField(_timeController, "Time 1", Icons.access_time, () => _selectTime(context, 1, setDialogState: setDialogState)),
+                  
+                  if (freqTimes == 'Twice a day' || freqTimes == '3 times a day') ...[
+                    const SizedBox(height: 15),
+                    _buildPickerField(_timeController2, "Time 2", Icons.access_time, () => _selectTime(context, 2, setDialogState: setDialogState)),
+                  ],
+                  
+                  if (freqTimes == '3 times a day') ...[
+                    const SizedBox(height: 15),
+                    _buildPickerField(_timeController3, "Time 3", Icons.access_time, () => _selectTime(context, 3, setDialogState: setDialogState)),
+                  ],
+                  
+                  const SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (!_formKey.currentState!.validate()) return;
+                          
+                          String medName = _nameController.text.trim();
+                          String newFreq = freqType;
+                          if (freqType == 'Everyday' || freqType == 'Specific Dates') {
+                            newFreq = "$freqType ($freqTimes)";
+                          }
+
+                          List<String> timeStrings = [_timeController.text];
+                          List<TimeOfDay?> timesToSchedule = [_selectedTime];
+
+                          if (freqTimes == 'Twice a day' || freqTimes == '3 times a day') {
+                            timeStrings.add(_timeController2.text);
+                            timesToSchedule.add(_selectedTime2);
+                          }
+                          if (freqTimes == '3 times a day') {
+                            timeStrings.add(_timeController3.text);
+                            timesToSchedule.add(_selectedTime3);
+                          }
+
+                          for (var t in timesToSchedule) {
+                            if (t == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select all times")));
+                              return;
+                            }
+                          }
+
+                          await doc.reference.update({
+                            'title': medName,
+                            'dosage': _dosageController.text.trim(),
+                            'date': _dateController.text,
+                            'times': timeStrings,
+                            'stock': _stockController.text.trim(),
+                            'frequency': newFreq,
+                          });
+                          
+                          if (_selectedDate != null) {
+                            for (int i = 0; i < timesToSchedule.length; i++) {
+                              DateTime scheduleTime = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, timesToSchedule[i]!.hour, timesToSchedule[i]!.minute);
+                              await NotificationService.scheduleNotification(
+                                id: (doc.id.hashCode + i),
+                                title: medName,
+                                body: "Time to take your $medName",
+                                scheduledDate: scheduleTime,
+                                docId: doc.id,
+                                type: 'medication',
+                                userId: _effectivePatientId,
+                              );
+                            }
+                          }
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("updated $medName reminder set successfully"),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.pop(context);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
+                        child: const Text("Update", style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  TimeOfDay _parseTimeString(String timeStr, BuildContext context) {
+    try {
+      final parts = timeStr.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1].split(' ')[0]);
+      final isPm = timeStr.toLowerCase().contains('pm');
+      return TimeOfDay(hour: isPm && hour != 12 ? hour + 12 : (hour == 12 && !isPm ? 0 : hour), minute: minute);
+    } catch (e) {
+      return TimeOfDay.now();
     }
   }
 
@@ -78,68 +308,130 @@ class _MedicationScreenState extends State<MedicationScreen> {
     if (widget.isReadOnly) return;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Add Medication", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                _buildDialogField(
-                  _nameController, 
-                  "Medicine Name", 
-                  Icons.medication,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\s]'))],
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return "Required";
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 15),
-                _buildDialogField(_dosageController, "Dosage (e.g. 1 pill)", Icons.science),
-                const SizedBox(height: 15),
-                DropdownButtonFormField<String>(
-                  value: selectedFrequency,
-                  decoration: InputDecoration(
-                    labelText: "Frequency",
-                    prefixIcon: const Icon(Icons.repeat, color: brandBlue),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Add Medication", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  _buildDialogField(
+                    _nameController, 
+                    "Medicine Name", 
+                    Icons.medication,
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\s]'))],
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return "Required";
+                      return null;
+                    },
                   ),
-                  items: ['Once a day', 'Twice a day', '3 times a day']
-                      .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                      .toList(),
-                  onChanged: (v) => setState(() => selectedFrequency = v!),
-                ),
-                const SizedBox(height: 15),
-                _buildPickerField(_dateController, "Start Date", Icons.calendar_today, () => _selectDate(context)),
-                const SizedBox(height: 15),
-                _buildPickerField(_timeController, "Reminder Time", Icons.access_time, () => _selectTime(context)),
-                const SizedBox(height: 15),
-                _buildDialogField(
-                  _stockController, 
-                  "Stock (Optional)", 
-                  Icons.inventory, 
-                  keyboardType: TextInputType.number, 
-                  isOptional: true,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                const SizedBox(height: 30),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                    const SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: _isSaving ? null : _saveMedication,
-                      style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
-                      child: const Text("Save", style: TextStyle(color: Colors.white)),
+                  const SizedBox(height: 15),
+                  _buildDialogField(_dosageController, "Dosage (e.g. 1 pill)", Icons.science),
+                  const SizedBox(height: 15),
+                  DropdownButtonFormField<String>(
+                    value: selectedFrequencyType,
+                    decoration: InputDecoration(
+                      labelText: "Frequency Type",
+                      prefixIcon: const Icon(Icons.calendar_month, color: brandBlue),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+                    ),
+                    items: ['Once a day', 'Twice a day', '3 times a day', 'Everyday', 'Specific Dates']
+                        .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                        .toList(),
+                    onChanged: (v) {
+                      setDialogState(() {
+                        selectedFrequencyType = v!;
+                        if (v == 'Once a day' || v == 'Twice a day' || v == '3 times a day') {
+                          selectedFrequency = v!;
+                        }
+                      });
+                      setState(() {
+                        selectedFrequencyType = v!;
+                        if (v == 'Once a day' || v == 'Twice a day' || v == '3 times a day') {
+                          selectedFrequency = v!;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 15),
+                  if (selectedFrequencyType == 'Everyday' || selectedFrequencyType == 'Specific Dates')
+                    DropdownButtonFormField<String>(
+                      value: selectedFrequency,
+                      decoration: InputDecoration(
+                        labelText: "Times per day",
+                        prefixIcon: const Icon(Icons.repeat, color: brandBlue),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                      items: ['Once a day', 'Twice a day', '3 times a day']
+                          .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                          .toList(),
+                      onChanged: (v) {
+                        setDialogState(() => selectedFrequency = v!);
+                        setState(() => selectedFrequency = v!);
+                      },
+                    ),
+                  const SizedBox(height: 15),
+                  if (selectedFrequencyType != 'Specific Dates')
+                    _buildPickerField(_dateController, "Start Date", Icons.calendar_today, () => _selectDate(context))
+                  else ...[
+                    const Text("Select Dates", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ..._selectedDates.map((date) => Chip(
+                          label: Text(DateFormat('MMM dd').format(date), style: const TextStyle(fontSize: 10)),
+                          onDeleted: () => setDialogState(() => _selectedDates.remove(date)),
+                        )),
+                        ActionChip(
+                          avatar: const Icon(Icons.add, size: 16),
+                          label: const Text("Add Date"),
+                          onPressed: () => _addSpecificDate(context, setDialogState),
+                        ),
+                      ],
                     ),
                   ],
-                )
-              ],
+                  const SizedBox(height: 15),
+                  _buildPickerField(_timeController, "Time 1", Icons.access_time, () => _selectTime(context, 1, setDialogState: setDialogState)),
+                  
+                  if (selectedFrequency == 'Twice a day' || selectedFrequency == '3 times a day') ...[
+                    const SizedBox(height: 15),
+                    _buildPickerField(_timeController2, "Time 2", Icons.access_time, () => _selectTime(context, 2, setDialogState: setDialogState)),
+                  ],
+                  
+                  if (selectedFrequency == '3 times a day') ...[
+                    const SizedBox(height: 15),
+                    _buildPickerField(_timeController3, "Time 3", Icons.access_time, () => _selectTime(context, 3, setDialogState: setDialogState)),
+                  ],
+                  
+                  const SizedBox(height: 15),
+                  _buildDialogField(
+                    _stockController, 
+                    "Stock (Optional)", 
+                    Icons.inventory, 
+                    keyboardType: TextInputType.number, 
+                    isOptional: true,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                  const SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        onPressed: _isSaving ? null : _saveMedication,
+                        style: ElevatedButton.styleFrom(backgroundColor: brandBlue),
+                        child: const Text("Save", style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
             ),
           ),
         ),
@@ -150,54 +442,89 @@ class _MedicationScreenState extends State<MedicationScreen> {
   Future<void> _saveMedication() async {
     if (!_formKey.currentState!.validate()) return;
     if (_effectivePatientId.isEmpty) return;
-    if (_selectedTime == null || _selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select Date and Time")));
-      return;
+
+    List<DateTime> datesToProcess = [];
+    if (selectedFrequencyType != 'Specific Dates') {
+      if (_selectedDate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select start date")));
+        return;
+      }
+      datesToProcess.add(_selectedDate!);
+    } else {
+      if (_selectedDates.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select at least one date")));
+        return;
+      }
+      datesToProcess.addAll(_selectedDates);
+    }
+    
+    List<TimeOfDay?> timesToSchedule = [_selectedTime];
+    List<String> timeStrings = [_timeController.text];
+
+    if (selectedFrequency == 'Twice a day') {
+      timesToSchedule.add(_selectedTime2);
+      timeStrings.add(_timeController2.text);
+    } else if (selectedFrequency == '3 times a day') {
+      timesToSchedule.add(_selectedTime2);
+      timeStrings.add(_timeController2.text);
+      timesToSchedule.add(_selectedTime3);
+      timeStrings.add(_timeController3.text);
+    }
+
+    for (var t in timesToSchedule) {
+      if (t == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select all required times")));
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
     try {
       final String medicineName = _nameController.text.trim();
       final String dosage = _dosageController.text.trim();
-      final String setDate = _dateController.text;
-      final String setTime = _timeController.text;
 
-      DateTime scheduleTime = DateTime(
-        _selectedDate!.year, 
-        _selectedDate!.month, 
-        _selectedDate!.day, 
-        _selectedTime!.hour, 
-        _selectedTime!.minute
-      );
+      for (DateTime date in datesToProcess) {
+        final String setDate = DateFormat('yyyy-MM-dd').format(date);
+        
+        String displayFreq = selectedFrequencyType;
+        if (selectedFrequencyType == 'Everyday' || selectedFrequencyType == 'Specific Dates') {
+          displayFreq = "$selectedFrequencyType ($selectedFrequency)";
+        }
 
-      final docRef = await FirebaseFirestore.instance.collection('reminders').add({
-        'userId': _effectivePatientId,
-        'title': medicineName,
-        'dosage': dosage,
-        'time': setTime,
-        'date': setDate,
-        'type': 'medication',
-        'status': 'Pending',
-        'frequency': selectedFrequency,
-        'stock': _stockController.text.trim(),
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+        final docRef = await FirebaseFirestore.instance.collection('reminders').add({
+          'userId': _effectivePatientId,
+          'title': medicineName,
+          'dosage': dosage,
+          'times': timeStrings, // Saved as an array
+          'date': setDate,
+          'type': 'medication',
+          'status': 'Pending',
+          'frequency': displayFreq,
+          'stock': _stockController.text.trim(),
+          'timestamp': FieldValue.serverTimestamp(),
+        });
 
-      await NotificationService.scheduleNotification(
-        id: docRef.id.hashCode,
-        title: medicineName,
-        body: "Time to take your $medicineName ${dosage.isNotEmpty ? '($dosage)' : ''}",
-        scheduledDate: scheduleTime,
-        docId: docRef.id,
-        type: 'medication',
-        userId: _effectivePatientId,
-      );
+        for (int i = 0; i < timesToSchedule.length; i++) {
+          TimeOfDay currentT = timesToSchedule[i]!;
+          DateTime scheduleTime = DateTime(date.year, date.month, date.day, currentT.hour, currentT.minute);
+
+          await NotificationService.scheduleNotification(
+            id: (docRef.id.hashCode + i),
+            title: medicineName,
+            body: "Time to take your $medicineName ${dosage.isNotEmpty ? '($dosage)' : ''}",
+            scheduledDate: scheduleTime,
+            docId: docRef.id,
+            type: 'medication',
+            userId: _effectivePatientId,
+          );
+        }
+      }
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Reminder set for $setDate at $setTime"),
+          const SnackBar(
+            content: Text("Medication reminders set successfully"),
             backgroundColor: Colors.green,
           ),
         );
@@ -205,6 +532,13 @@ class _MedicationScreenState extends State<MedicationScreen> {
       _nameController.clear();
       _dosageController.clear();
       _stockController.clear();
+      _timeController.clear();
+      _timeController2.clear();
+      _timeController3.clear();
+      _selectedTime = null;
+      _selectedTime2 = null;
+      _selectedTime3 = null;
+      _selectedDates.clear();
     } catch (e) {
       debugPrint("Save Error: $e");
     } finally {
@@ -246,6 +580,14 @@ class _MedicationScreenState extends State<MedicationScreen> {
               final dosage = data['dosage'] ?? "";
               final stockStr = data['stock'] ?? "";
               final int stockCount = stockStr.isNotEmpty ? int.tryParse(stockStr) ?? -1 : -1;
+              
+              // Handle both single time (string) and multiple times (list)
+              List<String> times = [];
+              if (data['times'] != null) {
+                times = List<String>.from(data['times']);
+              } else if (data['time'] != null) {
+                times = [data['time']];
+              }
 
               return Dismissible(
                 key: Key(doc.id),
@@ -258,17 +600,59 @@ class _MedicationScreenState extends State<MedicationScreen> {
                   elevation: 0,
                   color: Colors.grey[50],
                   child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     leading: CircleAvatar(
                       backgroundColor: brandBlue.withOpacity(0.1), 
                       child: const Icon(Icons.medication, color: brandBlue)
                     ),
-                    title: Text(data['title'] ?? "Medicine", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(
+                      data['title'] ?? "Medicine", 
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const SizedBox(height: 6),
                         if (dosage.isNotEmpty)
-                          Text("Dosage: $dosage", style: const TextStyle(color: brandBlue, fontWeight: FontWeight.w500)),
-                        Text("${data['date']} at ${data['time']}"),
+                          Row(
+                            children: [
+                              Icon(Icons.science, size: 14, color: brandBlue.withOpacity(0.7)),
+                              const SizedBox(width: 4),
+                              Text("Dosage: $dosage", style: const TextStyle(color: brandBlue, fontWeight: FontWeight.w600, fontSize: 14)),
+                            ],
+                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("${data['date']}", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                                  const SizedBox(height: 2),
+                                  Wrap(
+                                    spacing: 8,
+                                    children: times.map((t) => Text(t, style: const TextStyle(color: brandBlue, fontWeight: FontWeight.bold, fontSize: 12))).toList(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: brandBlue.withOpacity(0.1), 
+                            borderRadius: BorderRadius.circular(12)
+                          ),
+                          child: Text(data['frequency'] ?? "", style: const TextStyle(color: brandBlue, fontSize: 10, fontWeight: FontWeight.w500)),
+                        ),
                         if (stockCount != -1)
                           Padding(
                             padding: const EdgeInsets.only(top: 4.0),
@@ -282,14 +666,10 @@ class _MedicationScreenState extends State<MedicationScreen> {
                           ),
                       ],
                     ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: brandBlue.withOpacity(0.1), 
-                        borderRadius: BorderRadius.circular(20)
-                      ),
-                      child: Text(data['frequency'] ?? "", style: const TextStyle(color: brandBlue, fontSize: 12)),
-                    ),
+                    trailing: !widget.isReadOnly ? IconButton(
+                      icon: const Icon(Icons.edit, color: brandBlue, size: 24),
+                      onPressed: () => _showEditMedicationDialog(doc),
+                    ) : null,
                   ),
                 ),
               );
