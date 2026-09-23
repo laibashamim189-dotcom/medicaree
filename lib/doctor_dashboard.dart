@@ -6,6 +6,7 @@ import 'doctor_review_screen.dart';
 import 'patient_dashboard.dart';
 import 'DirectChatScreen.dart';
 import 'login_screen.dart';
+import 'notification_service.dart';
 
 class DoctorDashboard extends StatefulWidget {
   const DoctorDashboard({super.key});
@@ -16,6 +17,43 @@ class DoctorDashboard extends StatefulWidget {
 
 class _DoctorDashboardState extends State<DoctorDashboard> {
   static const Color brandBlue = Color(0xFF1565C0);
+
+  @override
+  void initState() {
+    super.initState();
+    // Start listening for chat notifications for the Doctor
+    _listenForNotifications();
+    // Update FCM Token for the Doctor
+    NotificationService.updateFCMToken();
+  }
+
+  void _listenForNotifications() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('toId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          var data = change.doc.data() as Map<String, dynamic>;
+          
+          NotificationService.showImmediateNotification(
+            id: change.doc.id.hashCode,
+            title: data['title'] ?? "New Alert",
+            body: data['body'] ?? "",
+            channelId: data['type'] == 'chat' ? 'chat_messages' : 'medication_urgent_v9',
+          );
+
+          // Mark as delivered so it doesn't pop up again
+          change.doc.reference.update({'status': 'delivered'});
+        }
+      }
+    });
+  }
 
   // Soft delete logic for doctor requests: updates a flag instead of deleting the document
   Future<void> _performSoftDelete(String requestId) async {
