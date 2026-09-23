@@ -234,7 +234,13 @@ class _SignupScreenState extends State<SignupScreen> {
                         TextFormField(
                           controller: _dobController,
                           decoration: _inputDecoration("DOB (YYYY-MM-DD)", Icons.calendar_today),
-                          validator: (value) => (value == null || value.isEmpty) ? 'Enter date of birth' : null,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'Enter date of birth';
+                            if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value.trim())) {
+                              return 'Use format YYYY-MM-DD (e.g. 1995-12-31)';
+                            }
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 15),
 
