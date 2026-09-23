@@ -15,6 +15,7 @@ import 'medical_directory_screen.dart';
 import 'pharmacyDelivery_screen.dart';
 import 'AiChatScreen.dart';
 import 'cloudinary_service.dart';
+import 'notification_service.dart';
 
 class PatientDashboard extends StatefulWidget {
   final String? patientId;
@@ -35,6 +36,35 @@ class _PatientDashboardState extends State<PatientDashboard> {
     super.initState();
     _effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid ?? "";
     _updateScreens();
+    
+    // Start listening for notifications (like chat messages)
+    _listenForNotifications();
+    NotificationService.updateFCMToken();
+  }
+
+  void _listenForNotifications() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('toId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          var data = change.doc.data() as Map<String, dynamic>;
+          NotificationService.showImmediateNotification(
+            id: change.doc.id.hashCode,
+            title: data['title'] ?? "New Alert",
+            body: data['body'] ?? "",
+            channelId: data['type'] == 'chat' ? 'chat_messages' : 'medication_urgent_v9',
+          );
+          change.doc.reference.update({'status': 'delivered'});
+        }
+      }
+    });
   }
 
   void _updateScreens() {
@@ -164,7 +194,7 @@ class DashboardHome extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(backgroundColor: color.withValues(alpha: 0.1), child: Icon(icon, color: color)),
+            CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
             const SizedBox(height: 10),
             Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
             Text(sub, style: const TextStyle(fontSize: 10, color: Colors.grey)),
@@ -328,6 +358,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
+    bool isOwnDashboard = widget.patientId == currentUserId;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: ListView(
@@ -435,7 +468,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
             child: OutlinedButton.icon(
               onPressed: () {
-                if (widget.isReadOnly) {
+                if (!isOwnDashboard) {
                   Navigator.pop(context);
                 } else {
                   FirebaseAuth.instance.signOut();
@@ -446,8 +479,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 }
               },
-              icon: Icon(widget.isReadOnly ? Icons.arrow_back : Icons.logout, color: Colors.red),
-              label: Text(widget.isReadOnly ? "BACK TO PORTAL" : "LOG OUT", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              icon: Icon(isOwnDashboard ? Icons.logout : Icons.arrow_back, color: Colors.red),
+              label: Text(isOwnDashboard ? "LOG OUT" : "BACK TO PORTAL", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 55),
                 side: const BorderSide(color: Colors.redAccent, width: 1.5),
@@ -469,7 +502,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.1),
+          backgroundColor: color.withOpacity(0.1),
           child: Icon(icon, color: color, size: 20),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
