@@ -43,11 +43,12 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
   static const Color brandBlue = Color(0xFF1565C0);
 
   late String _effectivePatientId;
+  final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
   @override
   void initState() {
     super.initState();
-    _effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid ?? "";
+    _effectivePatientId = widget.patientId ?? _currentUserId;
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() => setState(() {}));
     _apptSelectedDate = DateTime.now();
@@ -345,15 +346,25 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
 
   Widget _buildAppointmentsTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('reminders').where('userId', isEqualTo: _effectivePatientId).where('type', isEqualTo: 'appointment').orderBy('timestamp', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance.collection('reminders').where('userId', isEqualTo: _effectivePatientId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No appointments found"));
+        
+        var docs = snapshot.data!.docs.where((d) => d['type'] == 'appointment').toList();
+        docs.sort((a, b) {
+          var t1 = a['timestamp'] as Timestamp?;
+          var t2 = b['timestamp'] as Timestamp?;
+          if (t1 == null) return 1;
+          if (t2 == null) return -1;
+          return t2.compareTo(t1);
+        });
+
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: docs.length,
           itemBuilder: (context, index) {
-            var doc = snapshot.data!.docs[index];
+            var doc = docs[index];
             return Dismissible(
               key: Key(doc.id),
               direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
@@ -392,14 +403,24 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
 
   Widget _buildDoctorRequestsList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('doctor_requests').where('patientId', isEqualTo: _effectivePatientId).orderBy('timestamp', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance.collection('doctor_requests').where('patientId', isEqualTo: _effectivePatientId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No requests found"));
+        
+        var docs = snapshot.data!.docs.toList();
+        docs.sort((a, b) {
+          var t1 = a['timestamp'] as Timestamp?;
+          var t2 = b['timestamp'] as Timestamp?;
+          if (t1 == null) return 1;
+          if (t2 == null) return -1;
+          return t2.compareTo(t1);
+        });
+
         return ListView.builder(
-          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: snapshot.data!.docs.length,
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: docs.length,
           itemBuilder: (context, index) {
-            var doc = snapshot.data!.docs[index]; var data = doc.data() as Map<String, dynamic>;
+            var doc = docs[index]; var data = doc.data() as Map<String, dynamic>;
             String status = data['status'] ?? 'Pending'; Map<String, dynamic>? recommendations = data['recommendations'] as Map<String, dynamic>?;
             return Dismissible(
               key: Key(doc.id), direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
@@ -422,25 +443,133 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
 
   Widget _buildCaregiverRequestsList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('caregiver_requests').where('patientId', isEqualTo: _effectivePatientId).orderBy('timestamp', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance.collection('caregiver_requests').where('patientId', isEqualTo: _effectivePatientId).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No requests found"));
+
+        var docs = snapshot.data!.docs.toList();
+        docs.sort((a, b) {
+          var t1 = a['timestamp'] as Timestamp?;
+          var t2 = b['timestamp'] as Timestamp?;
+          if (t1 == null) return 1;
+          if (t2 == null) return -1;
+          return t2.compareTo(t1);
+        });
+
         return ListView.builder(
-          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: snapshot.data!.docs.length,
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: docs.length,
           itemBuilder: (context, index) {
-            var doc = snapshot.data!.docs[index];
+            var doc = docs[index];
+            var data = doc.data() as Map<String, dynamic>;
+            String status = (data['status'] ?? 'Pending').toString().toLowerCase();
+            String caregiverId = data['caregiverId'] ?? '';
+            String caregiverName = data['caregiverName'] ?? 'Caregiver';
+            String caregiverEmail = data['caregiverEmail'] ?? '';
+            
+            bool isViewingAsCaregiver = (_currentUserId != _effectivePatientId);
+
             return Dismissible(
               key: Key(doc.id), direction: widget.isReadOnly ? DismissDirection.none : DismissDirection.endToStart,
-              onDismissed: (_) => _deleteRequest('caregiver_requests', doc.id),
               background: Container(alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.grey)),
+              onDismissed: (_) => _deleteRequest('caregiver_requests', doc.id),
               child: Card(
                 margin: const EdgeInsets.only(bottom: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0, color: Colors.grey[50],
-                child: ListTile(title: Text(doc['caregiverName'] ?? "Caregiver", style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(doc['relationship'] ?? ""), trailing: _buildStatusBadge(doc['status'] ?? 'Pending')),
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: Text(caregiverName, style: const TextStyle(fontWeight: FontWeight.bold)), 
+                      subtitle: Text(data['relationship'] ?? ""), 
+                      trailing: _buildStatusBadge(data['status'] ?? 'Pending')
+                    ),
+                    // HIDE chat button if viewing as a Caregiver (don't chat with self/other caregivers here)
+                    if (status == 'accepted' && !isViewingAsCaregiver)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            _buildCaregiverChatWithBadge(caregiverId.isNotEmpty ? caregiverId : caregiverEmail, caregiverName, useEmail: caregiverId.isEmpty),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  Widget _buildCaregiverChatWithBadge(String id, String caregiverName, {bool useEmail = false}) {
+    if (useEmail) {
+      return FutureBuilder<QuerySnapshot>(
+        future: FirebaseFirestore.instance.collection('users').where('email', isEqualTo: id).limit(1).get(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+            return _buildActualChatButton(snapshot.data!.docs.first.id, caregiverName);
+          }
+          return const SizedBox();
+        },
+      );
+    }
+    return _buildActualChatButton(id, caregiverName);
+  }
+
+  Widget _buildActualChatButton(String caregiverId, String caregiverName) {
+    final String chatId = DirectChatScreen.getChatId(caregiverId, _effectivePatientId);
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final chatData = snapshot.data!.data() as Map<String, dynamic>;
+          if (chatData['lastSenderId'] == caregiverId && chatData['isRead'] == false) hasUnread = true;
+        }
+        return Stack(
+          clipBehavior: Clip.none, 
+          children: [
+            SizedBox(
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true});
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DirectChatScreen(
+                        doctorId: caregiverId,
+                        patientId: _effectivePatientId,
+                        receiverName: caregiverName,
+                        isReadOnly: widget.isReadOnly,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+            if (hasUnread) 
+              Positioned(
+                right: 4, 
+                top: -3, 
+                child: Container(
+                  padding: const EdgeInsets.all(4), 
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 12, minHeight: 12)
+                )
+              ),
+          ],
         );
       },
     );
@@ -462,16 +591,25 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
           Row(children: [
             Expanded(child: ElevatedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PaymentScreen(initialDoctorId: data['doctorId']))), icon: const Icon(Icons.credit_card, size: 18), label: const Text("Pay Doctor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))))),
             const SizedBox(width: 10),
-            Expanded(child: _buildChatButtonWithBadge(data['doctorId'] ?? "", data['doctorName'] ?? "Doctor")),
+            Expanded(child: _buildChatButtonWithBadge(data['doctorId'] ?? "", data['doctorName'] ?? "Doctor", managedBy: (recs['managedBy'] ?? 'Patient').toString())),
           ]),
         ]),
       ),
     );
   }
 
-  Widget _buildChatButtonWithBadge(String docId, String docName) {
+  Widget _buildChatButtonWithBadge(String docId, String docName, {String managedBy = 'Patient'}) {
     if (docId.isEmpty) return const SizedBox();
     final String chatId = DirectChatScreen.getChatId(docId, _effectivePatientId);
+    
+    // Check if current user is a caregiver
+    bool isCaregiver = (_currentUserId != _effectivePatientId);
+    // If managed by patient AND user is caregiver, force read-only for this specific doctor chat
+    bool chatIsReadOnly = widget.isReadOnly;
+    if (isCaregiver && managedBy.toLowerCase() == 'patient') {
+      chatIsReadOnly = true;
+    }
+
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots(),
       builder: (context, snapshot) {
@@ -481,14 +619,37 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
           if (chatData['lastSenderId'] == docId && chatData['isRead'] == false) hasUnread = true;
         }
         return Stack(clipBehavior: Clip.none, children: [
-          SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () { FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true}); Navigator.push(context, MaterialPageRoute(builder: (context) => DirectChatScreen(doctorId: docId, patientId: _effectivePatientId, receiverName: docName))); }, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: brandBlue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))))),
+          SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () { 
+            FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true}); 
+            Navigator.push(context, MaterialPageRoute(builder: (context) => DirectChatScreen(
+              doctorId: docId, 
+              patientId: _effectivePatientId, 
+              receiverName: docName,
+              isReadOnly: chatIsReadOnly, // Passing context-aware read-only flag
+            ))); 
+          }, icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: brandBlue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))))),
           if (hasUnread) Positioned(right: 8, top: -5, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), constraints: const BoxConstraints(minWidth: 14, minHeight: 14))),
         ]);
       },
     );
   }
 
-  Widget _buildStatusBadge(String status) => Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: status == 'Approved' ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(15)), child: Text(status, style: TextStyle(color: status == 'Approved' ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)));
+  Widget _buildStatusBadge(String status) {
+    String lower = status.toLowerCase();
+    bool isOk = lower == 'approved' || lower == 'accepted';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+      decoration: BoxDecoration(
+        color: isOk ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1), 
+        borderRadius: BorderRadius.circular(15)
+      ), 
+      child: Text(
+        lower == 'accepted' ? 'Accepted' : status, 
+        style: TextStyle(color: isOk ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)
+      )
+    );
+  }
+
   Widget _buildRecItem(String title, String val) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)), Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))]));
   Widget _buildTextField(TextEditingController ctrl, String hint, IconData icon, {int maxLines = 1}) => TextFormField(controller: ctrl, maxLines: maxLines, decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))), validator: (v) => (v == null || v.isEmpty) ? "Required" : null);
   Widget _buildOriginalStyleField(TextEditingController ctrl, String hint, IconData icon) => TextFormField(controller: ctrl, decoration: InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: brandBlue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))), validator: (v) => (v == null || v.isEmpty) ? "Required" : null);
