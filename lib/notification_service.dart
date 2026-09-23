@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
 import 'main.dart';
@@ -161,10 +162,9 @@ class NotificationService {
 
       if (docId.isEmpty) return;
 
-      String status = "Missed";
+      String status = (actionId == 'action_missed') ? "Missed" : "Done";
       String? localPerformedBy = performedBy;
 
-      // Handle actions from tray
       if (actionId == 'action_patient') {
         status = "Done";
         localPerformedBy = "Patient";
@@ -177,6 +177,10 @@ class NotificationService {
 
       final docRef = FirebaseFirestore.instance.collection('reminders').doc(docId);
       await docRef.update({'status': status});
+
+      if (status == "Missed" && localPerformedBy == 'Patient') {
+        notifyCaregiverOnDismiss(userId, title, type);
+      }
 
       if (status == "Done" && type.toLowerCase() == 'medication') {
         final docSnap = await docRef.get();
@@ -210,7 +214,6 @@ class NotificationService {
         else if (type.toLowerCase() == 'appointment') historyStatus = 'Attended';
       }
 
-      // Add "by Patient/Caregiver" info to history
       if (localPerformedBy != null) {
         historyStatus = "$historyStatus (by $localPerformedBy)";
       }
@@ -227,6 +230,47 @@ class NotificationService {
       });
     } catch (e) {
       debugPrint("Action logic error: $e");
+    }
+  }
+
+  static Future<void> notifyCaregiverOnDismiss(String patientId, String taskTitle, String taskType) async {
+    try {
+      DocumentSnapshot patientDoc = await FirebaseFirestore.instance.collection('users').doc(patientId).get();
+      String patientName = patientDoc.exists ? (patientDoc.data() as Map<String, dynamic>)['name'] ?? "Patient" : "Patient";
+
+      QuerySnapshot requestSnap = await FirebaseFirestore.instance
+          .collection('caregiver_requests')
+          .where('patientId', isEqualTo: patientId)
+          .where('status', isEqualTo: 'accepted')
+          .get();
+
+      for (var doc in requestSnap.docs) {
+        String? caregiverEmail = (doc.data() as Map<String, dynamic>)['caregiverEmail'];
+        if (caregiverEmail != null) {
+          QuerySnapshot userSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: caregiverEmail)
+              .limit(1)
+              .get();
+
+          if (userSnap.docs.isNotEmpty) {
+            final caregiverData = userSnap.docs.first.data() as Map<String, dynamic>;
+            final caregiverId = userSnap.docs.first.id;
+            String? fcmToken = caregiverData['fcmToken'];
+            
+            await FirebaseFirestore.instance.collection('notifications').add({
+              'toId': caregiverId, // Target caregiver's UID
+              'toToken': fcmToken,
+              'title': "Alert: Task Dismissed",
+              'body': "$patientName has dismissed their $taskType: $taskTitle",
+              'timestamp': FieldValue.serverTimestamp(),
+              'status': 'pending'
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error notifying caregiver: $e");
     }
   }
 
