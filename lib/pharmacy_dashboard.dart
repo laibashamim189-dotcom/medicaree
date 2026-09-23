@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'login_screen.dart';
+import 'notification_service.dart';
 
 class PharmacyDashboard extends StatefulWidget {
   const PharmacyDashboard({super.key});
@@ -13,6 +14,37 @@ class PharmacyDashboard extends StatefulWidget {
 
 class _PharmacyDashboardState extends State<PharmacyDashboard> {
   final user = FirebaseAuth.instance.currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForNotifications();
+    NotificationService.updateFCMToken();
+  }
+
+  void _listenForNotifications() {
+    if (user == null) return;
+
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('toId', isEqualTo: user!.uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          var data = change.doc.data() as Map<String, dynamic>;
+          NotificationService.showImmediateNotification(
+            id: change.doc.id.hashCode,
+            title: data['title'] ?? "New Alert",
+            body: data['body'] ?? "",
+            channelId: data['type'] == 'chat' ? 'chat_messages' : 'medication_urgent_v9',
+          );
+          change.doc.reference.update({'status': 'delivered'});
+        }
+      }
+    });
+  }
 
   Future<void> _updateOrderStatus(String orderId, String newStatus, {Map<String, dynamic>? additionalData}) async {
     try {
@@ -40,7 +72,6 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
     }
   }
 
-  // Soft delete logic for pharmacy orders
   Future<void> _performSoftDelete(String orderId) async {
     try {
       await FirebaseFirestore.instance
@@ -177,52 +208,29 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Text("Error: ${snapshot.error}"),
-            ),
-          );
+          return Center(child: Text("Error: ${snapshot.error}"));
         }
-
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(isIncoming ? "No new incoming requests" : "No accepted requests"));
         }
 
-        // Local filtering by status and delete flag
         final filteredDocs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           if (data['deletedByPharmacy'] == true) return false;
-          
           final status = data['deliveryStatus'] ?? '';
-          if (isIncoming) {
-            return status == 'Pending (Awaiting Confirmation)';
-          } else {
-            return [
-              'In Stock (Provide Address)',
-              'Delivery Requested',
-              'Confirmed (Out for Delivery)',
-              'Rejected (Out of Stock)'
-            ].contains(status);
-          }
+          if (isIncoming) return status == 'Pending (Awaiting Confirmation)';
+          return ['In Stock (Provide Address)', 'Delivery Requested', 'Confirmed (Out for Delivery)', 'Rejected (Out of Stock)'].contains(status);
         }).toList();
 
-        // Sorting by timestamp descending
         filteredDocs.sort((a, b) {
-          final dataA = a.data() as Map<String, dynamic>;
-          final dataB = b.data() as Map<String, dynamic>;
-          final timestampA = dataA['timestamp'] as Timestamp?;
-          final timestampB = dataB['timestamp'] as Timestamp?;
-          
-          if (timestampA == null && timestampB == null) return 0;
+          final timestampA = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          final timestampB = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
           if (timestampA == null) return 1;
           if (timestampB == null) return -1;
           return timestampB.compareTo(timestampA);
         });
 
-        if (filteredDocs.isEmpty) {
-          return Center(child: Text(isIncoming ? "No new incoming requests" : "No accepted requests"));
-        }
+        if (filteredDocs.isEmpty) return Center(child: Text(isIncoming ? "No new incoming requests" : "No accepted requests"));
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
@@ -244,75 +252,35 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Text(
-                            data['medicineName'] ?? "Unknown Medicine",
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                        Expanded(child: Text(data['medicineName'] ?? "Unknown Medicine", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getStatusColor(status).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            status,
-                            style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
+                          decoration: BoxDecoration(color: _getStatusColor(status).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          child: Text(status, style: TextStyle(color: _getStatusColor(status), fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Text("Patient: ${data['userEmail'] ?? 'N/A'}"),
-                    Text("Phone: ${data['patientPhone'] ?? 'N/A'}"), // Added Patient Phone Number
+                    Text("Phone: ${data['patientPhone'] ?? 'N/A'}"),
                     Text("Quantity: ${data['quantity']}"),
-                    if (data['medicinePrice'] != null)
-                       Text("Medicine Cost: Rs. ${data['medicinePrice']}"),
-                    if (data['deliveryFee'] != null)
-                       Text("Delivery Fee: Rs. ${data['deliveryFee']}"),
-                    if (data['totalAmount'] != null)
-                       Text("Total Amount: Rs. ${data['totalAmount']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                    if (data['deliveryAddress'] != null)
-                      Text("Address: ${data['deliveryAddress']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    if (data['medicinePrice'] != null) Text("Medicine Cost: Rs. ${data['medicinePrice']}"),
+                    if (data['deliveryFee'] != null) Text("Delivery Fee: Rs. ${data['deliveryFee']}"),
+                    if (data['totalAmount'] != null) Text("Total Amount: Rs. ${data['totalAmount']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                    if (data['deliveryAddress'] != null) Text("Address: ${data['deliveryAddress']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                     const Divider(height: 25),
-                    
                     if (status == 'Pending (Awaiting Confirmation)') 
                       Row(
                         children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                              onPressed: () => _showConfirmStockDialog(order.id, data['quantity'] ?? 1),
-                              child: const Text("Confirm Stock", style: TextStyle(color: Colors.white)),
-                            ),
-                          ),
+                          Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: () => _showConfirmStockDialog(order.id, data['quantity'] ?? 1), child: const Text("Confirm Stock", style: TextStyle(color: Colors.white)))),
                           const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                              onPressed: () => _updateOrderStatus(order.id, 'Rejected (Out of Stock)'),
-                              child: const Text("Reject Request", style: TextStyle(color: Colors.white)),
-                            ),
-                          ),
+                          Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: () => _updateOrderStatus(order.id, 'Rejected (Out of Stock)'), child: const Text("Reject Request", style: TextStyle(color: Colors.white)))),
                         ],
                       ),
-                      
                     if (status == 'Delivery Requested')
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          minimumSize: const Size(double.infinity, 45),
-                        ),
-                        onPressed: () => _updateOrderStatus(order.id, 'Confirmed (Out for Delivery)'),
-                        icon: const Icon(Icons.local_shipping, color: Colors.white),
-                        label: const Text("Mark as Out for Delivery", style: TextStyle(color: Colors.white)),
-                      ),
-                    
+                      ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size(double.infinity, 45)), onPressed: () => _updateOrderStatus(order.id, 'Confirmed (Out for Delivery)'), icon: const Icon(Icons.local_shipping, color: Colors.white), label: const Text("Mark as Out for Delivery", style: TextStyle(color: Colors.white))),
                     if (status == 'Confirmed (Out for Delivery)')
-                      const Center(
-                        child: Text("Order is on the way!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                      ),
+                      const Center(child: Text("Order is on the way!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
                   ],
                 ),
               ),
@@ -321,23 +289,10 @@ class _PharmacyDashboardState extends State<PharmacyDashboard> {
             if (!isIncoming) {
               return Slidable(
                 key: Key(order.id),
-                endActionPane: ActionPane(
-                  motion: const ScrollMotion(),
-                  extentRatio: 0.2,
-                  dismissible: DismissiblePane(onDismissed: () => _performSoftDelete(order.id)),
-                  children: [
-                    SlidableAction(
-                      onPressed: (context) => _performSoftDelete(order.id),
-                      backgroundColor: Colors.transparent,
-                      foregroundColor: Colors.grey,
-                      icon: Icons.delete,
-                    ),
-                  ],
-                ),
+                endActionPane: ActionPane(motion: const ScrollMotion(), extentRatio: 0.2, dismissible: DismissiblePane(onDismissed: () => _performSoftDelete(order.id)), children: [SlidableAction(onPressed: (context) => _performSoftDelete(order.id), backgroundColor: Colors.transparent, foregroundColor: Colors.grey, icon: Icons.delete)]),
                 child: cardContent,
               );
             }
-
             return cardContent;
           },
         );
