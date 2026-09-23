@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'login_screen.dart';
 import 'pharmacy_dashboard.dart';
 import 'cloudinary_service.dart';
+import 'notification_service.dart';
 
 class PharmacistLicenseUploadScreen extends StatefulWidget {
   const PharmacistLicenseUploadScreen({super.key});
@@ -23,6 +24,38 @@ class _PharmacistLicenseUploadScreenState extends State<PharmacistLicenseUploadS
   
   File? _certificateFile;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForAdminAlerts();
+    NotificationService.updateFCMToken();
+  }
+
+  void _listenForAdminAlerts() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('toId', isEqualTo: user.uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          var data = change.doc.data() as Map<String, dynamic>;
+          NotificationService.showImmediateNotification(
+            id: change.doc.id.hashCode,
+            title: data['title'] ?? "License Update",
+            body: data['body'] ?? "",
+            channelId: 'medication_urgent_v9',
+          );
+          change.doc.reference.update({'status': 'delivered'});
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -143,7 +176,6 @@ class _PharmacistLicenseUploadScreenState extends State<PharmacistLicenseUploadS
           });
         }
 
-        // Logic to prevent editing after submission
         bool isEditable = status == 'NOT_SUBMITTED' || status == 'REJECTED';
 
         return Scaffold(
@@ -251,7 +283,6 @@ class _PharmacistLicenseUploadScreenState extends State<PharmacistLicenseUploadS
                   if (status == 'REJECTED')
                     _buildStatusCard(Colors.redAccent, Icons.error_outline, "Rejected. Please check your details and certificate, then resubmit."),
 
-                  // Button is only visible if status is NOT_SUBMITTED or REJECTED
                   if (isEditable)
                     Padding(
                       padding: const EdgeInsets.only(top: 20),
