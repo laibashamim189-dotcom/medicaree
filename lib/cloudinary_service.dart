@@ -4,8 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
 class CloudinaryService {
-  // Cloud Name: s9cayswl
-  // Upload Preset: medicare_preset
   static const String cloudName = "s9coyswl";
   static const String uploadPreset = "medicare_preset";
 
