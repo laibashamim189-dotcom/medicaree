@@ -87,8 +87,6 @@ class _SignupScreenState extends State<SignupScreen> {
       }
 
       await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set(userData);
-
-      // Save FCM Token for Notifications
       await NotificationService.updateFCMToken();
 
       if (mounted) {
