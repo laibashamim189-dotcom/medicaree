@@ -28,7 +28,6 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> {
   bool _isLoading = false;
   int _selectedCategoryIndex = 0; // 0: Doctor, 1: Caregiver, 2: Appointments
 
-  // Theme Color Matching Design
   final Color primaryTeal = const Color(0xFF489499);
 
   // Firestore Instance
