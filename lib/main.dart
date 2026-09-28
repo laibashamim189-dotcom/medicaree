@@ -15,7 +15,6 @@ import 'doctor_license_upload_screen.dart';
 import 'pharmacist_license_upload_screen.dart';
 import 'nurse_license_upload_screen.dart';
 
-// Global key to handle navigation from notifications
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -124,7 +123,6 @@ class RoleWrapper extends StatelessWidget {
           }
         }
 
-        // Default routing for other roles (Patient, Caregiver-Friend/Relative)
         switch (role) {
           case 'Caregiver':
             return const CaregiverDashboard();
