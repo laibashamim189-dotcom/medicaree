@@ -36,6 +36,14 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
+
+          // Prevent showing notification if sender is the current user
+          final String? fromId = data['fromId'];
+          if (fromId != null && fromId.trim().toLowerCase() == currentUser!.uid.trim().toLowerCase()) {
+            change.doc.reference.update({'status': 'delivered'});
+            continue;
+          }
+
           NotificationService.showImmediateNotification(
             id: change.doc.id.hashCode,
             title: data['title'] ?? "New Alert",
