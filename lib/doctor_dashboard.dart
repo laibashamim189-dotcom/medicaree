@@ -23,7 +23,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     super.initState();
     // Start listening for chat notifications for the Doctor
     _listenForNotifications();
-    // Update FCM Token for the Doctor
     NotificationService.updateFCMToken();
   }
 
@@ -40,7 +39,16 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
-          
+
+          if (data['type'] == 'chat') {
+            final String? fromId = data['fromId'];
+            if (fromId != null && fromId.trim().toLowerCase() == uid.trim().toLowerCase()) {
+              // Mark as delivered so it doesn't pop up again, but skip showing it
+              change.doc.reference.update({'status': 'delivered'});
+              continue;
+            }
+          }
+
           NotificationService.showImmediateNotification(
             id: change.doc.id.hashCode,
             title: data['title'] ?? "New Alert",
@@ -55,7 +63,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     });
   }
 
-  // Soft delete logic for doctor requests: updates a flag instead of deleting the document
   Future<void> _performSoftDelete(String requestId) async {
     try {
       await FirebaseFirestore.instance
