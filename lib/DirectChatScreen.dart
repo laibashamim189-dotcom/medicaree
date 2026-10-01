@@ -194,8 +194,6 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       notifyIds.add(widget.patientId.trim());
       if (_caregiverId.isNotEmpty) notifyIds.add(_caregiverId.trim());
     }
-
-    // MANDATORY SENDER EXCLUSION: Robust removal of the person sending this message
     notifyIds.removeWhere((id) => 
       id.isEmpty || 
       id.toLowerCase().trim() == myIdLower
