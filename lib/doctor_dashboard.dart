@@ -43,7 +43,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
           if (data['type'] == 'chat') {
             final String? fromId = data['fromId'];
             if (fromId != null && fromId.trim().toLowerCase() == uid.trim().toLowerCase()) {
-              // Mark as delivered so it doesn't pop up again, but skip showing it
               change.doc.reference.update({'status': 'delivered'});
               continue;
             }
