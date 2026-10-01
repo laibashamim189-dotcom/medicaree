@@ -55,6 +55,14 @@ class _PatientDashboardState extends State<PatientDashboard> {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
+          if (data['type'] == 'chat') {
+            final String? fromId = data['fromId'];
+            if (fromId != null && fromId.trim().toLowerCase() == uid.trim().toLowerCase()) {
+              change.doc.reference.update({'status': 'delivered'});
+              continue;
+            }
+          }
+
           NotificationService.showImmediateNotification(
             id: change.doc.id.hashCode,
             title: data['title'] ?? "New Alert",
