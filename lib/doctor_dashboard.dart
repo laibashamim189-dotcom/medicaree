@@ -83,8 +83,6 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       }
     }
   }
-
-  // Soft delete logic for payments: updates a flag instead of deleting the document
   Future<void> _performPaymentSoftDelete(String paymentId) async {
     try {
       await FirebaseFirestore.instance
