@@ -37,7 +37,6 @@ class CaregiverRequestsViewScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF4B9F90),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // Caregiver ko apni email wali saari requests yahan milengi
         stream: FirebaseFirestore.instance
             .collection('caregiver_requests')
             .where('caregiverEmail', isEqualTo: currentCaregiverEmail)
