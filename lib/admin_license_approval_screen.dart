@@ -30,8 +30,6 @@ class _AdminLicenseApprovalScreenState extends State<AdminLicenseApprovalScreen>
         _searchText = _searchController.text;
       });
     });
-    
-    // Listen for new pending requests to alert Admin
     _listenForNewRequests();
   }
 
@@ -75,8 +73,6 @@ class _AdminLicenseApprovalScreenState extends State<AdminLicenseApprovalScreen>
         'licenseStatus': newStatus,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
-      
-      // Notify the professional on Mobile
       String title = newStatus == 'APPROVED' ? "License Verified! ✅" : "License Rejected ❌";
       String body = newStatus == 'APPROVED' 
           ? "Congratulations $name! Your professional license has been verified."
