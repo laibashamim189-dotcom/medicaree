@@ -94,6 +94,21 @@ class NotificationService {
       await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        if (message.data['type'] == 'chat') {
+          final dynamic fromIdData = message.data['fromId'] ?? message.data['senderId'] ?? message.data['lastSenderId'];
+          final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+          if (fromIdData != null && currentUserId != null) {
+            final String fromId = fromIdData.toString().trim().toLowerCase();
+            final String currentId = currentUserId.trim().toLowerCase();
+            
+            if (fromId == currentId) {
+              debugPrint("Chat notification suppressed: Sender is the current user.");
+              return;
+            }
+          }
+        }
+
         String title = message.notification?.title ?? "New Message";
         String body = message.notification?.body ?? "";
         if (message.notification == null && message.data.isNotEmpty) {
