@@ -84,7 +84,6 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       return TimeOfDay.now();
     }
   }
-
   void _showEditAppointmentDialog(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     _docController.text = data['doctorName'] ?? "";
