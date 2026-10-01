@@ -23,7 +23,6 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // If a patientId is passed (from doctor view), use it. Otherwise use current user.
     final String? effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
