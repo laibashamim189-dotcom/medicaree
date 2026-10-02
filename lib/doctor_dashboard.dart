@@ -7,6 +7,7 @@ import 'patient_dashboard.dart';
 import 'DirectChatScreen.dart';
 import 'login_screen.dart';
 import 'notification_service.dart';
+import 'dart:async';
 
 class DoctorDashboard extends StatefulWidget {
   const DoctorDashboard({super.key});
@@ -17,20 +18,26 @@ class DoctorDashboard extends StatefulWidget {
 
 class _DoctorDashboardState extends State<DoctorDashboard> {
   static const Color brandBlue = Color(0xFF1565C0);
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
-    // Start listening for chat notifications for the Doctor
     _listenForNotifications();
     NotificationService.updateFCMToken();
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
   }
 
   void _listenForNotifications() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    FirebaseFirestore.instance
+    _notificationSubscription = FirebaseFirestore.instance
         .collection('notifications')
         .where('toId', isEqualTo: uid)
         .where('status', isEqualTo: 'pending')
@@ -40,12 +47,18 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
 
-          if (data['type'] == 'chat') {
-            final String? fromId = data['fromId'];
-            if (fromId != null && fromId.trim().toLowerCase() == uid.trim().toLowerCase()) {
-              change.doc.reference.update({'status': 'delivered'});
-              continue;
-            }
+          final String currentId = uid.trim().toLowerCase();
+          final String fromId = (data['fromId'] ?? data['senderId'] ?? "").toString().trim().toLowerCase();
+          final String? notifyChatId = data['chatId']?.toString().toLowerCase();
+          final String? activeChatId = DirectChatScreen.activeChatId?.toLowerCase();
+
+          // SUPPRESSION LOGIC (WhatsApp Style)
+          // 1. Don't show if I sent the message
+          // 2. Don't show if I am currently viewing that specific chat
+          if (fromId == currentId || (notifyChatId != null && notifyChatId == activeChatId)) {
+            debugPrint("Doctor Dashboard: Suppressing notification (Self-sent or Active chat)");
+            change.doc.reference.update({'status': 'delivered'});
+            continue;
           }
 
           NotificationService.showImmediateNotification(
@@ -55,11 +68,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
             channelId: data['type'] == 'chat' ? 'chat_messages' : 'medication_urgent_v9',
           );
 
-          // Mark as delivered so it doesn't pop up again
           change.doc.reference.update({'status': 'delivered'});
         }
       }
-    });
+    }, onError: (e) => debugPrint("Doctor Dashboard Notification Listener Error: $e"));
   }
 
   Future<void> _performSoftDelete(String requestId) async {
@@ -82,6 +94,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       }
     }
   }
+
   Future<void> _performPaymentSoftDelete(String paymentId) async {
     try {
       await FirebaseFirestore.instance
