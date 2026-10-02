@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,6 +17,7 @@ import 'pharmacyDelivery_screen.dart';
 import 'AiChatScreen.dart';
 import 'cloudinary_service.dart';
 import 'notification_service.dart';
+import 'DirectChatScreen.dart';
 
 class PatientDashboard extends StatefulWidget {
   final String? patientId;
@@ -30,6 +32,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
   int _selectedIndex = 0;
   late String _effectivePatientId;
   late List<Widget> _screens;
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
@@ -37,30 +40,38 @@ class _PatientDashboardState extends State<PatientDashboard> {
     _effectivePatientId = widget.patientId ?? FirebaseAuth.instance.currentUser?.uid ?? "";
     _updateScreens();
     
-    // Start listening for notifications (like chat messages)
     _listenForNotifications();
     NotificationService.updateFCMToken();
   }
 
-  void _listenForNotifications() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
 
-    FirebaseFirestore.instance
+  void _listenForNotifications() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final String myUid = user.uid.trim().toLowerCase();
+
+    _notificationSubscription = FirebaseFirestore.instance
         .collection('notifications')
-        .where('toId', isEqualTo: uid)
+        .where('toId', isEqualTo: user.uid)
         .where('status', isEqualTo: 'pending')
         .snapshots()
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
-          if (data['type'] == 'chat') {
-            final String? fromId = data['fromId'];
-            if (fromId != null && fromId.trim().toLowerCase() == uid.trim().toLowerCase()) {
-              change.doc.reference.update({'status': 'delivered'});
-              continue;
-            }
+          
+          final String fromId = (data['fromId'] ?? data['senderId'] ?? "").toString().trim().toLowerCase();
+          final String? notifyChatId = data['chatId']?.toString().toLowerCase();
+          final String? activeChatId = DirectChatScreen.activeChatId?.toLowerCase();
+          if (fromId == myUid || (notifyChatId != null && notifyChatId == activeChatId)) {
+            debugPrint("Patient Dashboard: Suppressing notification (Self-sent or Active chat)");
+            change.doc.reference.update({'status': 'delivered'});
+            continue;
           }
 
           NotificationService.showImmediateNotification(
@@ -72,7 +83,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           change.doc.reference.update({'status': 'delivered'});
         }
       }
-    });
+    }, onError: (e) => debugPrint("Patient Dashboard Notification Listener Error: $e"));
   }
 
   void _updateScreens() {
@@ -123,7 +134,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 }
 
-// --- SCREEN 1: DASHBOARD HOME ---
 class DashboardHome extends StatelessWidget {
   final String patientId;
   final bool isReadOnly;
@@ -213,7 +223,6 @@ class DashboardHome extends StatelessWidget {
   }
 }
 
-// --- SCREEN 5: PROFILE SCREEN ---
 class ProfileScreen extends StatefulWidget {
   final String patientId;
   final VoidCallback? onBack;
