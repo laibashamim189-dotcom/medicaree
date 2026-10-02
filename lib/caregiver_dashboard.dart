@@ -6,6 +6,7 @@ import 'patient_dashboard.dart';
 import 'login_screen.dart';
 import 'DirectChatScreen.dart';
 import 'notification_service.dart';
+import 'dart:async';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -17,6 +18,7 @@ class CaregiverDashboard extends StatefulWidget {
 class _CaregiverDashboardState extends State<CaregiverDashboard> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   static const Color brandBlue = Color(0xFF1565C0);
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
@@ -25,9 +27,17 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     NotificationService.updateFCMToken();
   }
 
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
+
   void _listenForNotifications() {
     if (currentUser == null) return;
-    FirebaseFirestore.instance
+    final String myUid = currentUser!.uid.trim().toLowerCase();
+
+    _notificationSubscription = FirebaseFirestore.instance
         .collection('notifications')
         .where('toId', isEqualTo: currentUser!.uid)
         .where('status', isEqualTo: 'pending')
@@ -37,9 +47,11 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
         if (change.type == DocumentChangeType.added) {
           var data = change.doc.data() as Map<String, dynamic>;
 
-          // Prevent showing notification if sender is the current user
-          final String? fromId = data['fromId'];
-          if (fromId != null && fromId.trim().toLowerCase() == currentUser!.uid.trim().toLowerCase()) {
+          final String fromId = (data['fromId'] ?? data['senderId'] ?? "").toString().trim().toLowerCase();
+          final String? notifyChatId = data['chatId']?.toString().toLowerCase();
+          final String? activeChatId = DirectChatScreen.activeChatId?.toLowerCase();
+          if (fromId == myUid || (notifyChatId != null && notifyChatId == activeChatId)) {
+            debugPrint("Caregiver Dashboard: Suppressing notification (Self-sent or Active chat)");
             change.doc.reference.update({'status': 'delivered'});
             continue;
           }
@@ -53,7 +65,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           change.doc.reference.update({'status': 'delivered'});
         }
       }
-    });
+    }, onError: (e) => debugPrint("Caregiver Dashboard Notification Listener Error: $e"));
   }
 
   Future<void> _navigateToPatientDashboard(String patientId) async {
@@ -198,7 +210,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           bool hasUnread = false;
           if (snapshot.hasData && snapshot.data!.exists) {
             final chatData = snapshot.data!.data() as Map<String, dynamic>;
-            if (chatData['lastSenderId'] == patientId && chatData['isRead'] == false) hasUnread = true;
+            if (chatData['lastSenderId'] != currentUser!.uid && chatData['isRead'] == false) hasUnread = true;
           }
           return Stack(clipBehavior: Clip.none, children: [
             SizedBox(height: 38, child: ElevatedButton.icon(onPressed: () { FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true}); Navigator.push(context, MaterialPageRoute(builder: (context) => DirectChatScreen(doctorId: currentUser!.uid, patientId: patientId, receiverName: data['patientName'] ?? "Patient"))); }, icon: const Icon(Icons.chat_bubble_outline, size: 16), label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), style: ElevatedButton.styleFrom(backgroundColor: brandBlue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16)))),
