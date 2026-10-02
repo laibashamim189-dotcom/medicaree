@@ -76,19 +76,6 @@ class NotificationService {
         } catch (e) {
           debugPrint("Chat channel creation failed: $e");
         }
-
-        try {
-          await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel(
-            'medication_urgent_v9',
-            'Health Reminders',
-            description: 'Timely reminders for your health tasks',
-            importance: Importance.max,
-            playSound: true,
-            enableVibration: true,
-          ));
-        } catch (e) {
-          debugPrint("Reminders channel creation failed: $e");
-        }
       }
 
       await _messaging.requestPermission(alert: true, badge: true, sound: true);
@@ -98,12 +85,22 @@ class NotificationService {
           final dynamic fromIdData = message.data['fromId'] ?? message.data['senderId'] ?? message.data['lastSenderId'];
           final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
+          // 1. Suppress if the sender is the current user
           if (fromIdData != null && currentUserId != null) {
             final String fromId = fromIdData.toString().trim().toLowerCase();
             final String currentId = currentUserId.trim().toLowerCase();
             
             if (fromId == currentId) {
               debugPrint("Chat notification suppressed: Sender is the current user.");
+              return;
+            }
+          }
+
+          // 2. Suppress if the user is currently viewing this chat
+          final String? notifyChatId = message.data['chatId'];
+          if (notifyChatId != null && DirectChatScreen.activeChatId != null) {
+            if (notifyChatId == DirectChatScreen.activeChatId) {
+              debugPrint("Chat notification suppressed: User is in the active chat ($notifyChatId).");
               return;
             }
           }
@@ -155,7 +152,7 @@ class NotificationService {
           builder: (context) => DirectChatScreen(
             doctorId: data['doctorId'] ?? '',
             patientId: data['patientId'] ?? '',
-            receiverName: data['senderName'] ?? 'Chat',
+            receiverName: data['senderName'] ?? data['fromName'] ?? 'Chat',
           ),
         ));
       } else if (response.actionId == null) {
@@ -274,7 +271,7 @@ class NotificationService {
             String? fcmToken = caregiverData['fcmToken'];
             
             await FirebaseFirestore.instance.collection('notifications').add({
-              'toId': caregiverId, // Target caregiver's UID
+              'toId': caregiverId,
               'toToken': fcmToken,
               'title': "Alert: Task Dismissed",
               'body': "$patientName has dismissed their $taskType: $taskTitle",
