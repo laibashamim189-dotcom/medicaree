@@ -8,6 +8,9 @@ class DirectChatScreen extends StatefulWidget {
   final String receiverName;
   final bool isReadOnly; 
 
+  // Global tracker for currently active chat ID to suppress notifications locally
+  static String? activeChatId;
+
   const DirectChatScreen({
     super.key,
     required this.doctorId,
@@ -16,8 +19,9 @@ class DirectChatScreen extends StatefulWidget {
     this.isReadOnly = false,
   });
 
+  // Standardized Chat ID generation (Always sorted and lowercased for consistency)
   static String getChatId(String id1, String id2) {
-    List<String> ids = [id1.trim(), id2.trim()];
+    List<String> ids = [id1.trim().toLowerCase(), id2.trim().toLowerCase()];
     ids.sort();
     return ids.join('_');
   }
@@ -47,8 +51,21 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Mark this chat as active globally
+    DirectChatScreen.activeChatId = DirectChatScreen.getChatId(widget.doctorId, widget.patientId);
     _markAsRead();
+    _clearRelevantNotifications();
     _initChatLogic();
+  }
+
+  @override
+  void dispose() {
+    final String currentChatId = DirectChatScreen.getChatId(widget.doctorId, widget.patientId);
+    if (DirectChatScreen.activeChatId == currentChatId) {
+      DirectChatScreen.activeChatId = null;
+    }
+    _messageController.dispose();
+    super.dispose();
   }
 
   Future<void> _initChatLogic() async {
@@ -65,9 +82,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (userDoc.exists) {
         _myUserName = userDoc.get('name') ?? 'User';
-        _currentUserRole = userDoc.get('role') ?? '';
-        if (_currentUserRole == 'Caregiver') _myRoleTag = ' [Caregiver]';
-        else if (_currentUserRole == 'Patient') _myRoleTag = ' [Patient]';
+        _currentUserRole = (userDoc.get('role') ?? '').toString().trim();
+        if (_currentUserRole.toLowerCase() == 'caregiver') _myRoleTag = ' [Caregiver]';
+        else if (_currentUserRole.toLowerCase() == 'patient') _myRoleTag = ' [Patient]';
       }
     } catch (e) { debugPrint("User details fetch error: $e"); }
   }
@@ -140,12 +157,29 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true}).catchError((e) => null);
   }
 
+  void _clearRelevantNotifications() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final String chatId = DirectChatScreen.getChatId(widget.doctorId, widget.patientId);
+    
+    FirebaseFirestore.instance
+        .collection('notifications')
+        .where('toId', isEqualTo: user.uid)
+        .where('chatId', isEqualTo: chatId)
+        .where('status', isEqualTo: 'pending')
+        .get()
+        .then((snapshot) {
+      for (var doc in snapshot.docs) {
+        doc.reference.update({'status': 'delivered'});
+      }
+    }).catchError((e) => debugPrint("Error clearing notifications: $e"));
+  }
+
   void _sendMessage() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || widget.isReadOnly) return;
 
     final String myId = user.uid.trim();
-    final String myIdLower = myId.toLowerCase();
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
     _messageController.clear();
@@ -158,13 +192,14 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     String pType = '';
     
     if (isPrivate) {
-      if (_currentUserRole == 'Patient') {
+      String roleLower = _currentUserRole.toLowerCase();
+      if (roleLower == 'patient') {
         privateTargetId = widget.doctorId.trim();
         pType = 'doctor_patient';
-      } else if (_currentUserRole == 'Caregiver') {
+      } else if (roleLower == 'caregiver') {
         privateTargetId = widget.doctorId.trim();
         pType = 'doctor_caregiver';
-      } else if (_currentUserRole == 'Doctor') {
+      } else if (roleLower == 'doctor') {
         if (_doctorPrivateTarget == 0) {
           privateTargetId = widget.patientId.trim();
           pType = 'doctor_patient';
@@ -177,42 +212,42 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
     Map<String, dynamic> messageData = {
       'senderId': myId,
+      'senderName': _myUserName,
       'timestamp': FieldValue.serverTimestamp(),
       'isPrivate': isPrivate,
       'text': (showTabs && _activeTab == 0 && _myRoleTag.isNotEmpty) ? "$text$_myRoleTag" : text,
-      'receiverId': isPrivate ? privateTargetId : (myIdLower == widget.doctorId.trim().toLowerCase() ? widget.patientId.trim() : widget.doctorId.trim()),
+      'receiverId': isPrivate ? privateTargetId : (myId == widget.doctorId.trim() ? widget.patientId.trim() : widget.doctorId.trim()),
     };
     if (isPrivate) messageData['privateType'] = pType;
 
-    // Building the notification set - ADD EVERYONE THEN REMOVE ME
-    Set<String> notifyIds = {};
-    if (isPrivate) {
-      if (privateTargetId.isNotEmpty) notifyIds.add(privateTargetId.trim());
-    } else {
-      // In group or standard mode, potentially everyone could be a receiver
-      notifyIds.add(widget.doctorId.trim());
-      notifyIds.add(widget.patientId.trim());
-      if (_caregiverId.isNotEmpty) notifyIds.add(_caregiverId.trim());
-    }
-    notifyIds.removeWhere((id) => 
-      id.isEmpty || 
-      id.toLowerCase().trim() == myIdLower
-    );
-
     await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add(messageData);
+
+    // NOTIFICATION LOGIC
+    Set<String> recipientIds = {};
+    if (isPrivate) {
+      if (privateTargetId.isNotEmpty) recipientIds.add(privateTargetId.trim());
+    } else {
+      recipientIds.add(widget.doctorId.trim());
+      recipientIds.add(widget.patientId.trim());
+      if (_caregiverId.isNotEmpty) recipientIds.add(_caregiverId.trim());
+    }
+
+    // MANDATORY: Remove current sender from targets to prevent self-notification
+    recipientIds.removeWhere((id) => id.isEmpty || id.trim() == myId);
     
-    for (String rid in notifyIds) {
-      if (rid.toLowerCase().trim() == myIdLower) continue;
-      
+    for (String rid in recipientIds) {
       FirebaseFirestore.instance.collection('notifications').add({
-        'toId': rid,
+        'toId': rid.trim(),
         'fromId': myId,
+        'senderId': myId, 
         'fromName': _myUserName,
+        'senderName': _myUserName,
         'title': "New Message from $_myUserName",
         'body': text,
         'type': 'chat',
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
+        'chatId': chatId,
         'doctorId': widget.doctorId.trim(),
         'patientId': widget.patientId.trim(),
       });
@@ -227,7 +262,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     }, SetOptions(merge: true));
   }
 
-  void _performDelete() async {
+  void _deleteForEveryone() async {
     final String chatId = DirectChatScreen.getChatId(widget.doctorId, widget.patientId);
     if (_selectedMessageIds.isEmpty) return;
     final batch = FirebaseFirestore.instance.batch();
@@ -240,10 +275,63 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     });
   }
 
+  void _deleteForMe() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _selectedMessageIds.isEmpty) return;
+    final String chatId = DirectChatScreen.getChatId(widget.doctorId, widget.patientId);
+    final batch = FirebaseFirestore.instance.batch();
+    for (String msgId in _selectedMessageIds) {
+      batch.update(
+        FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').doc(msgId),
+        {'deletedFor': FieldValue.arrayUnion([user.uid])}
+      );
+    }
+    await batch.commit();
+    setState(() {
+      _selectedMessageIds.clear();
+    });
+  }
+
+  void _showDeleteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete message?", style: TextStyle(fontSize: 16, color: Colors.black54)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        actionsPadding: const EdgeInsets.only(right: 15, bottom: 10),
+        actions: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _deleteForEveryone();
+                },
+                child: const Text("Delete for everyone", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _deleteForMe();
+                },
+                child: const Text("Delete for me", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final String myIdLower = (user?.uid ?? "").toLowerCase().trim();
+    final String currentId = user?.uid ?? "";
     bool showTabs = _isDoctorPatientChat && _hasAcceptedCaregiver && _isManagedByBoth;
 
     return Scaffold(
@@ -253,7 +341,13 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                 icon: const Icon(Icons.close),
                 onPressed: () => setState(() => _selectedMessageIds.clear()),
               )
-            : null,
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  DirectChatScreen.activeChatId = null;
+                  Navigator.pop(context);
+                },
+              ),
         title: _selectedMessageIds.isEmpty
             ? Text(widget.receiverName)
             : Text("${_selectedMessageIds.length}"),
@@ -263,7 +357,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           if (_selectedMessageIds.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.white),
-              onPressed: _performDelete,
+              onPressed: _showDeleteDialog,
             ),
         ],
       ),
@@ -272,7 +366,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         : Column(
             children: [
               if (showTabs) _buildToggleBar(),
-              if (showTabs && _activeTab == 1 && _currentUserRole == 'Doctor') 
+              if (showTabs && _activeTab == 1 && _currentUserRole.toLowerCase() == 'doctor') 
                 _buildDoctorTargetSelector(),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
@@ -289,14 +383,20 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                     final allDocs = snapshot.data!.docs;
                     final messages = allDocs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
+                      
+                      // Filter out messages deleted for the current user
+                      List deletedFor = data['deletedFor'] ?? [];
+                      if (deletedFor.contains(currentId)) return false;
+
                       bool msgIsPrivate = data['isPrivate'] ?? false;
                       if (!showTabs) return !msgIsPrivate;
                       if (_activeTab == 0) return !msgIsPrivate;
                       if (!msgIsPrivate) return false;
                       String pType = data['privateType'] ?? '';
-                      if (_currentUserRole == 'Patient') return pType == 'doctor_patient';
-                      if (_currentUserRole == 'Caregiver') return pType == 'doctor_caregiver';
-                      if (_currentUserRole == 'Doctor') {
+                      String roleLower = _currentUserRole.toLowerCase();
+                      if (roleLower == 'patient') return pType == 'doctor_patient';
+                      if (roleLower == 'caregiver') return pType == 'doctor_caregiver';
+                      if (roleLower == 'doctor') {
                         return (_doctorPrivateTarget == 0) ? (pType == 'doctor_patient') : (pType == 'doctor_caregiver');
                       }
                       return true;
@@ -310,7 +410,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final data = messages[index].data() as Map<String, dynamic>;
-                        final bool isMe = data['senderId'].toString().trim().toLowerCase() == myIdLower;
+                        final bool isMe = data['senderId'].toString().trim() == currentId.trim();
                         final String msgId = messages[index].id;
                         final bool isSelected = _selectedMessageIds.contains(msgId);
                         String rawText = data['text'] ?? "";
