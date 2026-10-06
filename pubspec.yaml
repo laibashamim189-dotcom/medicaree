@@ -5,19 +5,45 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.4
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
   firebase_core: ^3.10.1
+  firebase_auth: ^5.4.1
+  cloud_firestore: ^5.6.0
+  firebase_messaging: ^15.2.10
   intl: ^0.19.0
+  google_generative_ai: ^0.4.7
+  flutter_local_notifications: ^17.2.4
+  timezone: ^0.9.4
+  flutter_timezone: ^3.0.1
+  url_launcher: ^6.3.1
+  flutter_contacts: ^1.1.9
+  permission_handler: ^11.3.1
+  http: ^1.2.2
+  image_picker: ^1.1.2
+  flutter_slidable: ^3.1.2
+  googleapis_auth: ^1.6.0
+  provider: ^6.1.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/app_icon.jpeg"
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/app_icon.jpeg"
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/config.json
+    - assets/images/

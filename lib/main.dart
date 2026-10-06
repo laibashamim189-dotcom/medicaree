@@ -3,44 +3,63 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'firebase_options.dart';
-import 'splash_screen.dart';
-import 'doctor_dashboard.dart';
-import 'caregiver_dashboard.dart';
-import 'patient_dashboard.dart';
-import 'pharmacy_dashboard.dart';
-import 'notification_service.dart';
-import 'login_screen.dart';
-import 'doctor_license_upload_screen.dart';
-import 'pharmacist_license_upload_screen.dart';
-import 'nurse_license_upload_screen.dart';
+import 'views/splash_screen.dart';
+import 'views/doctor_dashboard.dart';
+import 'views/caregiver_dashboard.dart';
+import 'views/patient_dashboard_screen.dart';
+import 'views/pharmacy_dashboard_screen.dart';
+import 'services/notification_service.dart';
+import 'views/login_screen.dart';
+import 'views/doctor_license_upload_screen.dart';
+import 'views/pharmacist_license_upload_screen.dart';
+import 'views/nurse_license_upload_screen.dart';
+
+// ViewModels imports
+import 'view_models/ai_chat_view_model.dart';
+import 'view_models/patient_dashboard_view_model.dart';
+import 'view_models/doctor_dashboard_view_model.dart';
+import 'view_models/caregiver_dashboard_view_model.dart';
+import 'view_models/activity_view_model.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    
+
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
-    
+
     // Notification Init
     await NotificationService.init();
 
     // CRITICAL: Request all necessary permissions on start
     await _requestRequiredPermissions();
-    
+
   } catch (e) {
     debugPrint("Initialization error: $e");
   }
 
-  runApp(const MedicareApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AiChatViewModel()),
+        ChangeNotifierProvider(create: (_) => PatientDashboardViewModel()),
+        ChangeNotifierProvider(create: (_) => DoctorDashboardViewModel()),
+        ChangeNotifierProvider(create: (_) => CaregiverDashboardViewModel()),
+        ChangeNotifierProvider(create: (_) => ActivityViewModel()),
+      ],
+      child: const MedicareApp(),
+    ),
+  );
 }
 
 Future<void> _requestRequiredPermissions() async {
@@ -117,9 +136,9 @@ class RoleWrapper extends StatelessWidget {
           if (status == 'APPROVED') {
             return role == 'Doctor' ? const DoctorDashboard() : const PharmacyDashboard();
           } else {
-            return role == 'Doctor' 
-              ? const DoctorLicenseUploadScreen() 
-              : const PharmacistLicenseUploadScreen();
+            return role == 'Doctor'
+                ? const DoctorLicenseUploadScreen()
+                : const PharmacistLicenseUploadScreen();
           }
         }
 
