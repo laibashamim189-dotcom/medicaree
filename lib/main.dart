@@ -15,13 +15,20 @@ import 'views/login_screen.dart';
 import 'views/doctor_license_upload_screen.dart';
 import 'views/pharmacist_license_upload_screen.dart';
 import 'views/nurse_license_upload_screen.dart';
-
 // ViewModels imports
 import 'view_models/ai_chat_view_model.dart';
 import 'view_models/patient_dashboard_view_model.dart';
 import 'view_models/doctor_dashboard_view_model.dart';
 import 'view_models/caregiver_dashboard_view_model.dart';
 import 'view_models/activity_view_model.dart';
+import 'view_models/alarm_view_model.dart';
+import 'view_models/admin_login_view_model.dart';
+import 'view_models/admin_panel_view_model.dart';
+import 'view_models/admin_license_view_model.dart';
+import 'view_models/doctor_verification_view_model.dart';
+import 'view_models/admin_feedback_view_model.dart';
+import 'view_models/feedback_view_model.dart';
+import 'view_models/admin_users_view_model.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -56,6 +63,14 @@ void main() async {
         ChangeNotifierProvider(create: (_) => DoctorDashboardViewModel()),
         ChangeNotifierProvider(create: (_) => CaregiverDashboardViewModel()),
         ChangeNotifierProvider(create: (_) => ActivityViewModel()),
+        ChangeNotifierProvider(create: (_) => AlarmViewModel()),
+        ChangeNotifierProvider(create: (_) => AdminLoginViewModel()),
+        ChangeNotifierProvider(create: (_) => AdminPanelViewModel()),
+        ChangeNotifierProvider(create: (_) => AdminLicenseViewModel()),
+        ChangeNotifierProvider(create: (_) => DoctorVerificationViewModel()),
+        ChangeNotifierProvider(create: (_) => AdminFeedbackViewModel()),
+        ChangeNotifierProvider(create: (_) => FeedbackViewModel()),
+        ChangeNotifierProvider(create: (_) => AdminUsersViewModel()),
       ],
       child: const MedicareApp(),
     ),
@@ -130,8 +145,6 @@ class RoleWrapper extends StatelessWidget {
             return const NurseLicenseUploadScreen();
           }
         }
-
-        // Logic for Doctor and Pharmacist
         if (role == 'Doctor' || role == 'Pharmacist') {
           if (status == 'APPROVED') {
             return role == 'Doctor' ? const DoctorDashboard() : const PharmacyDashboard();
