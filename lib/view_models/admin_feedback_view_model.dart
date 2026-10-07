@@ -9,8 +9,6 @@ class AdminFeedbackViewModel extends ChangeNotifier {
   Set<String> get selectedIds => _selectedIds;
   bool get hasSelection => _selectedIds.isNotEmpty;
   int get selectedCount => _selectedIds.length;
-
-  // Realtime feedback stream using the Admin-specific model
   Stream<List<FeedbackModel>> get feedbackStream {
     return _firestore
         .collection('feedback')
@@ -20,8 +18,6 @@ class AdminFeedbackViewModel extends ChangeNotifier {
             .map((doc) => FeedbackModel.fromFirestore(doc))
             .toList());
   }
-
-  // Toggle Selection for batch actions
   void toggleSelection(String id) {
     if (_selectedIds.contains(id)) {
       _selectedIds.remove(id);
@@ -40,8 +36,6 @@ class AdminFeedbackViewModel extends ChangeNotifier {
     _selectedIds.clear();
     notifyListeners();
   }
-
-  // Delete selected feedback documents from Firestore
   Future<bool> deleteSelected() async {
     try {
       final batch = _firestore.batch();
