@@ -44,7 +44,7 @@ class FeedbackViewModel extends ChangeNotifier {
         feedbackController.clear();
         isSubmitting = false;
         notifyListeners();
-        return null; // Success (No Error)
+        return null;
       } else {
         isSubmitting = false;
         notifyListeners();
