@@ -56,16 +56,12 @@ class AdminLicenseViewModel extends ChangeNotifier {
     _selectedIds.clear();
     notifyListeners();
   }
-
-  // Real-time listener for new incoming requests
   Stream<QuerySnapshot> getIncomingRequestsStream() {
     return _firestore
         .collection('users')
         .where('licenseStatus', isEqualTo: 'PENDING')
         .snapshots();
   }
-
-  // Real-time query according to selected role and status
   Stream<List<LicenseUserModel>> getLicenseUsersStream(String status) {
     Query query = _firestore.collection('users');
 
@@ -84,8 +80,6 @@ class AdminLicenseViewModel extends ChangeNotifier {
         .map((doc) => LicenseUserModel.fromFirestore(doc))
         .toList());
   }
-
-  // Update License Status & Send Notification
   Future<bool> updateLicenseStatus({
     required String docId,
     required String newStatus,
@@ -117,8 +111,6 @@ class AdminLicenseViewModel extends ChangeNotifier {
       return false;
     }
   }
-
-  // Delete selected users batch
   Future<bool> deleteSelectedUsers() async {
     try {
       final batch = _firestore.batch();
