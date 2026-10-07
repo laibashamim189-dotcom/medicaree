@@ -23,12 +23,10 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
   late TabController _tabController;
   static const Color brandBlue = Color(0xFF1565C0);
 
-  // Form Keys
   final _doctorFormKey = GlobalKey<FormState>();
   final _caregiverFormKey = GlobalKey<FormState>();
   final _apptFormKey = GlobalKey<FormState>();
 
-  // Controllers
   final _docNameController = TextEditingController();
   final _docEmailController = TextEditingController();
   final _specialtyController = TextEditingController();
@@ -84,7 +82,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
       child: Consumer<MedicalDirectoryViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
-            backgroundColor: Colors.grey[50],
+            backgroundColor: Colors.white,
             appBar: AppBar(
               backgroundColor: brandBlue,
               elevation: 0,
@@ -267,7 +265,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
 
   Widget _buildAppointmentsTab(MedicalDirectoryViewModel viewModel) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: _buildList(viewModel.getAppointmentsStream(), viewModel, 'reminders', isAppointment: true),
     );
   }
@@ -297,6 +295,10 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
             if (isAppointment) {
               return _buildAppointmentListItem(item, viewModel, collection);
             }
+            
+            if (collection == 'caregiver_requests') {
+              return _buildCaregiverListItem(item, viewModel, collection);
+            }
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 15),
@@ -317,28 +319,18 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
                 child: Card(
                   margin: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  color: Colors.white,
-                  elevation: 2,
+                  color: Colors.grey[50],
+                  elevation: 0.5,
                   child: Column(
                     children: [
                       ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                        subtitle: Text(item.subtitle, style: const TextStyle(color: Colors.black54, fontSize: 14)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                        title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        subtitle: Text(item.subtitle, style: const TextStyle(color: Colors.black54, fontSize: 13)),
                         trailing: _buildStatusBadge(status),
                       ),
                       if (item.type == 'doctor_request' && status.toLowerCase() == 'approved' && item.recommendations != null)
                         _buildRecommendationsBox(item, viewModel),
-                      if (item.type == 'caregiver_request' && status.toLowerCase() == 'accepted')
-                        Padding(
-                          padding: const EdgeInsets.only(right: 20, bottom: 15),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              _buildChatButtonWithBadge(item, viewModel),
-                            ],
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -350,9 +342,9 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
     );
   }
 
-  Widget _buildAppointmentListItem(MedicalItemModel item, MedicalDirectoryViewModel viewModel, String collection) {
+  Widget _buildCaregiverListItem(MedicalItemModel item, MedicalDirectoryViewModel viewModel, String collection) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Slidable(
         key: Key(item.id),
         endActionPane: ActionPane(
@@ -368,42 +360,163 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
           ],
         ),
         child: Card(
-          elevation: 2,
+          elevation: 0.5,
           margin: EdgeInsets.zero,
-          color: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          color: Colors.grey[50],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const SizedBox(height: 2),
+                          Text(item.subtitle, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    _buildStatusBadge(item.status),
+                  ],
+                ),
+                if (item.status.toLowerCase() == 'accepted') ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _buildChatButtonExactStyle(item, viewModel),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatButtonExactStyle(MedicalItemModel item, MedicalDirectoryViewModel viewModel) {
+    final String targetId = (item.type == 'doctor_request' ? item.doctorId : item.caregiverId) ?? '';
+    if (targetId.isEmpty) return const SizedBox();
+    final String chatId = DirectChatScreen.getChatId(targetId, viewModel.effectivePatientId);
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots(),
+      builder: (context, snapshot) {
+        bool hasUnread = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final chatData = snapshot.data!.data() as Map<String, dynamic>;
+          if (chatData['lastSenderId'] == targetId && chatData['isRead'] == false) {
+            hasUnread = true;
+          }
+        }
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            SizedBox(
+              height: 36,
+              width: 105,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true});
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChangeNotifierProvider(
+                        create: (_) => DirectChatViewModel(),
+                        child: DirectChatScreen(
+                          doctorId: targetId,
+                          patientId: viewModel.effectivePatientId,
+                          receiverName: item.title,
+                          isReadOnly: widget.isReadOnly,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.white),
+                label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandBlue,
+                  shape: const StadiumBorder(),
+                  elevation: 0,
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+            if (hasUnread)
+              Positioned(
+                right: 4,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAppointmentListItem(MedicalItemModel item, MedicalDirectoryViewModel viewModel, String collection) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Slidable(
+        key: Key(item.id),
+        endActionPane: ActionPane(
+          motion: const ScrollMotion(),
+          extentRatio: 0.2,
+          children: [
+            SlidableAction(
+              onPressed: (context) => viewModel.deleteItem(collection, item.id),
+              backgroundColor: Colors.transparent,
+              foregroundColor: Colors.grey,
+              icon: Icons.delete_outline,
+            ),
+          ],
+        ),
+        child: Card(
+          elevation: 0.5,
+          margin: EdgeInsets.zero,
+          color: Colors.grey[50],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 Container(
-                  width: 55,
-                  height: 55,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: brandBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(15),
+                    color: brandBlue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.calendar_today_outlined, color: brandBlue, size: 24),
+                  child: const Icon(Icons.calendar_today_outlined, color: brandBlue, size: 20),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      const SizedBox(height: 5),
-                      Text("${item.date} at ${item.time}", style: const TextStyle(color: Colors.black54, fontSize: 14)),
+                      Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)),
+                      const SizedBox(height: 2),
+                      Text("${item.date} at ${item.time}", style: const TextStyle(color: Colors.black54, fontSize: 13)),
                     ],
                   ),
                 ),
                 if (!widget.isReadOnly) ...[
-                  const Icon(Icons.notifications_active, color: brandBlue, size: 24),
-                  const SizedBox(width: 20),
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: brandBlue, size: 24),
-                    onPressed: () => _showEditAppointmentDialog(item, viewModel),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                  const Icon(Icons.notifications_active, color: brandBlue, size: 20),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () => _showEditAppointmentDialog(item, viewModel),
+                    child: const Icon(Icons.edit, color: brandBlue, size: 20),
                   ),
                 ],
               ],
@@ -417,7 +530,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
   Widget _buildRecommendationsBox(MedicalItemModel item, MedicalDirectoryViewModel viewModel) {
     final recs = item.recommendations!;
     return Padding(
-      padding: const EdgeInsets.all(15.0),
+      padding: const EdgeInsets.only(left: 15, right: 15, bottom: 15, top: 5),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -448,26 +561,26 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
               children: [
                 Expanded(
                   child: SizedBox(
-                    height: 45,
+                    height: 40,
                     child: ElevatedButton.icon(
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => PaymentScreen(initialDoctorId: item.doctorId ?? '')),
                       ),
                       icon: const Icon(Icons.credit_card, size: 18),
-                      label: const Text("Pay Doctor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      label: const Text("Pay Doctor", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                        shape: const StadiumBorder(),
                         elevation: 0,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _buildChatButtonWithBadge(item, viewModel),
+                  child: _buildChatButtonForDoctor(item, viewModel),
                 ),
               ],
             ),
@@ -477,14 +590,14 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
     );
   }
 
-  Widget _buildChatButtonWithBadge(MedicalItemModel item, MedicalDirectoryViewModel viewModel) {
-    final String targetId = (item.type == 'doctor_request' ? item.doctorId : item.caregiverId) ?? '';
+  Widget _buildChatButtonForDoctor(MedicalItemModel item, MedicalDirectoryViewModel viewModel) {
+    final String targetId = item.doctorId ?? '';
     if (targetId.isEmpty) return const SizedBox();
     final String chatId = DirectChatScreen.getChatId(targetId, viewModel.effectivePatientId);
 
     bool isCaregiver = (viewModel.currentUserId != viewModel.effectivePatientId);
     bool chatIsReadOnly = widget.isReadOnly;
-    if (item.type == 'doctor_request' && isCaregiver && (item.recommendations?['managedBy'] ?? '').toString().toLowerCase() == 'patient') {
+    if (isCaregiver && (item.recommendations?['managedBy'] ?? '').toString().toLowerCase() == 'patient') {
       chatIsReadOnly = true;
     }
 
@@ -500,8 +613,8 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
           clipBehavior: Clip.none,
           children: [
             SizedBox(
-              width: item.type == 'caregiver_request' ? 120 : double.infinity,
-              height: 45,
+              height: 40,
+              width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
                   FirebaseFirestore.instance.collection('chats').doc(chatId).update({'isRead': true});
@@ -520,24 +633,23 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
                     ),
                   );
                 },
-                icon: const Icon(Icons.chat_bubble_outline, size: 20),
-                label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                icon: const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.white),
+                label: const Text("Chat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: brandBlue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: const StadiumBorder(),
                   elevation: 0,
                 ),
               ),
             ),
             if (hasUnread)
               Positioned(
-                right: 10,
-                top: -5,
+                right: 12,
+                top: 0,
                 child: Container(
-                  padding: const EdgeInsets.all(5),
+                  padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                  constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
                 ),
               ),
           ],
@@ -551,8 +663,8 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87)),
           ],
         ),
       );
@@ -561,14 +673,14 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
     String lower = status.toLowerCase();
     bool isOk = lower == 'approved' || lower == 'accepted';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isOk ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: isOk ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         status,
-        style: TextStyle(color: isOk ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 12),
+        style: TextStyle(color: isOk ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 11),
       ),
     );
   }
@@ -816,7 +928,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
         hintText: hint,
         prefixIcon: Icon(icon, color: brandBlue),
         filled: true,
-        fillColor: brandBlue.withValues(alpha: 0.05),
+        fillColor: brandBlue.withOpacity(0.05),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.grey, width: 0.5)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: brandBlue, width: 1.0)),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
@@ -834,7 +946,7 @@ class _MedicalDirectoryScreenState extends State<MedicalDirectoryScreen> with Si
         hintText: hint,
         prefixIcon: Icon(icon, color: brandBlue),
         filled: true,
-        fillColor: brandBlue.withValues(alpha: 0.05),
+        fillColor: brandBlue.withOpacity(0.05),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.grey, width: 0.5)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: brandBlue, width: 1.0)),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
