@@ -15,8 +15,6 @@ class MedicalDirectoryViewModel extends ChangeNotifier {
   void init(String? patientId) {
     effectivePatientId = patientId ?? currentUserId;
   }
-
-  // Live Streams Direct Firestore se
   Stream<List<MedicalItemModel>> getAppointmentsStream() {
     return _db
         .collection('reminders')
@@ -48,7 +46,6 @@ class MedicalDirectoryViewModel extends ChangeNotifier {
         .toList());
   }
 
-  // Doctor Request Send karna
   Future<bool> sendDoctorRequest({
     required String doctorName,
     required String doctorEmail,
@@ -75,8 +72,6 @@ class MedicalDirectoryViewModel extends ChangeNotifier {
       return false;
     }
   }
-
-  // Caregiver Request Send karna
   Future<bool> sendCaregiverRequest({
     required String cgName,
     required String cgEmail,
@@ -101,8 +96,6 @@ class MedicalDirectoryViewModel extends ChangeNotifier {
       return false;
     }
   }
-
-  // Appointment Save karna
   Future<bool> saveAppointment({
     required String doctorName,
     required String specialty,
@@ -152,13 +145,9 @@ class MedicalDirectoryViewModel extends ChangeNotifier {
       return false;
     }
   }
-
-  // Delete Item
   Future<void> deleteItem(String collection, String docId) async {
     await _db.collection(collection).doc(docId).delete();
   }
-
-  // Helper Patient Name fetch
   Future<String> _getPatientName() async {
     final doc = await _db.collection('users').doc(effectivePatientId).get();
     return doc.exists ? (doc.data()?['name'] ?? 'Patient') : 'Patient';
