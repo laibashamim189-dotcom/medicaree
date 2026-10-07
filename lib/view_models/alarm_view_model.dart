@@ -6,7 +6,7 @@ class AlarmViewModel extends ChangeNotifier {
   AlarmPayloadModel? _payloadModel;
   AlarmPayloadModel? get payloadModel => _payloadModel;
 
-  String? _pendingAction; // 'action_taken' or 'action_missed'
+  String? _pendingAction;
   String? get pendingAction => _pendingAction;
 
   void initPayload(Map<String, dynamic> payloadMap) {
