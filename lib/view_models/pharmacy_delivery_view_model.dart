@@ -16,8 +16,6 @@ class PharmacyDeliveryViewModel extends ChangeNotifier {
   void init(String? patientId) {
     _effectivePatientId = patientId ?? _auth.currentUser?.uid ?? "";
   }
-
-  // Input Validation Logic
   String? validateForm({
     required String name,
     required String quantityStr,
@@ -106,8 +104,6 @@ class PharmacyDeliveryViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-  // Realtime Orders Stream
   Stream<List<MedicineOrderModel>> getOrdersStream() {
     return _firestore
         .collection('medicine_orders')
@@ -116,8 +112,6 @@ class PharmacyDeliveryViewModel extends ChangeNotifier {
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => MedicineOrderModel.fromFirestore(doc)).toList());
   }
-
-  // Confirm Delivery Address
   Future<void> confirmDeliveryAddress(String orderId, String address) async {
     if (address.trim().isEmpty) return;
     await _firestore.collection('medicine_orders').doc(orderId).update({
