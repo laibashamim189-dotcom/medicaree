@@ -12,8 +12,6 @@ class AdminPanelViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final DateTime panelOpenTime = DateTime.now();
-
-  // Menu Options Configuration
   List<AdminMenuItem> get menuItems => [
     AdminMenuItem(
       title: "Licenses Verification",
@@ -37,8 +35,6 @@ class AdminPanelViewModel extends ChangeNotifier {
       targetScreen: const AdminUsersScreen(),
     ),
   ];
-
-  // Stream for new pending requests created after panel launch
   Stream<NewRequestAlert?> get newLicenseAlertStream {
     return _firestore
         .collection('users')
@@ -61,8 +57,6 @@ class AdminPanelViewModel extends ChangeNotifier {
       return null;
     });
   }
-
-  // Handle Logout
   Future<bool> signOut() async {
     try {
       await _auth.signOut();
