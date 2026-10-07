@@ -14,15 +14,12 @@ class SplashViewModel extends ChangeNotifier {
       _isVisible = true;
       notifyListeners();
     });
-
-    // 3 seconds timer for navigation callback
     _timer = Timer(const Duration(seconds: 3), () {
       onNavigate();
     });
   }
 
   NavigationTarget determineTargetScreen() {
-    // Add logic here if you want to check FirebaseAuth auth state or Onboarding completed state
     return NavigationTarget.login;
   }
 
