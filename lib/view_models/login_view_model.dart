@@ -13,8 +13,6 @@ class LoginViewModel extends ChangeNotifier {
     obscurePassword = !obscurePassword;
     notifyListeners();
   }
-
-  // Login Logic: Returns user role if successfully logged in, or throws exception/returns null
   Future<String?> login() async {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
@@ -51,8 +49,6 @@ class LoginViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-  // Password Reset Logic
   Future<void> sendPasswordResetEmail(String email) async {
     if (email.isEmpty) {
       throw Exception("Please enter your email");
