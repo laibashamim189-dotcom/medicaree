@@ -16,14 +16,11 @@ class AdminLoginViewModel extends ChangeNotifier {
   Future<LoginResult> login(String email, String password) async {
     _isLoading = true;
     notifyListeners();
-
-    // Small delay to simulate authentication process
     await Future.delayed(const Duration(milliseconds: 300));
 
     _isLoading = false;
     notifyListeners();
 
-    // Hardcoded Admin Credentials Check
     if (email == "admin@medicare.com" && password == "admin786") {
       return LoginResult(isSuccess: true);
     } else {
