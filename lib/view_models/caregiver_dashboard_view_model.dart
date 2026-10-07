@@ -91,8 +91,6 @@ class CaregiverDashboardViewModel extends ChangeNotifier {
       debugPrint("Decline Request Error: $e");
     }
   }
-
-  // Caregiver access logic updated: Now returning false (full access) for accepted patients
   Future<bool> checkPatientReadOnlyAccess(String patientId) async {
     try {
       // Logic: If the caregiver is accepted for this patient, we give them edit rights
@@ -105,7 +103,6 @@ class CaregiverDashboardViewModel extends ChangeNotifier {
           .get();
 
       if (cgSnap.docs.isNotEmpty) {
-        // Full Access granted to the verified Caregiver
         return false; 
       }
 
@@ -137,7 +134,7 @@ class CaregiverDashboardViewModel extends ChangeNotifier {
     } catch (e) {
       debugPrint("Check Read-Only Access Error: $e");
     }
-    return true; // Default to read-only for unauthorized access
+    return true;
   }
 
   Future<void> markChatAsRead(String chatId) async {
