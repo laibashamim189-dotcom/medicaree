@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/doctor_review_model.dart';
+import '../models/doctor_dashboard_models.dart';
 import '../view_models/doctor_review_view_model.dart';
 
 class DoctorReviewScreen extends StatelessWidget {
