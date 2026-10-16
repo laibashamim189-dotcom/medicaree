@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../view_models/admin_feedback_view_model.dart';
-import '../models/Adminfeedback_model.dart';
+import '../models/feedback_model.dart';
 
 class AdminFeedbackScreen extends StatelessWidget {
   const AdminFeedbackScreen({super.key});
@@ -159,7 +159,7 @@ class AdminFeedbackScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 5),
                             Text(
-                              feedback.feedback,
+                              feedback.feedbackText,
                               style: const TextStyle(fontSize: 16),
                             ),
                           ],
