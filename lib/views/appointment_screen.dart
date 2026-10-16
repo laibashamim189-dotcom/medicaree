@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../models/appointment_screen_model.dart';
+import '../models/appointment_model.dart';
 import '../view_models/appointment_screen_view_model.dart';
 
 class AppointmentScreen extends StatefulWidget {
@@ -64,7 +64,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
     }
   }
 
-  void _showEditAppointmentDialog(AppointmentScreenModel appointment, AppointmentScreenViewModel viewModel) {
+  void _showEditAppointmentDialog(AppointmentModel appointment, AppointmentScreenViewModel viewModel) {
     _docController.text = appointment.doctorName;
     _specialtyController.text = appointment.specialty;
     _dateController.text = appointment.date;
@@ -207,7 +207,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
             backgroundColor: brandBlue,
             iconTheme: const IconThemeData(color: Colors.white),
           ),
-          body: StreamBuilder<List<AppointmentScreenModel>>(
+          body: StreamBuilder<List<AppointmentModel>>(
             stream: viewModel.getAppointmentsStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
