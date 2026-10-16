@@ -8,6 +8,7 @@ class CaregiverRequestModel {
   final String relationship;
   final String status;
   final Timestamp? timestamp;
+  final Timestamp? acceptedAt;
 
   CaregiverRequestModel({
     required this.id,
@@ -17,6 +18,7 @@ class CaregiverRequestModel {
     required this.relationship,
     required this.status,
     this.timestamp,
+    this.acceptedAt,
   });
 
   factory CaregiverRequestModel.fromFirestore(DocumentSnapshot doc) {
@@ -26,9 +28,10 @@ class CaregiverRequestModel {
       patientId: data['patientId'] ?? '',
       patientName: data['patientName'] ?? 'Unknown',
       caregiverEmail: data['caregiverEmail'] ?? '',
-      relationship: data['relationship'] ?? '',
+      relationship: data['relationship'] ?? 'N/A',
       status: data['status'] ?? 'pending',
       timestamp: data['timestamp'] as Timestamp?,
+      acceptedAt: data['acceptedAt'] as Timestamp?,
     );
   }
 }
