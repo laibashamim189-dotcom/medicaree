@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/caregiver_request_item.dart';
+import '../models/caregiver_request_model.dart';
 import '../view_models/caregiver_request_view_model.dart';
 
 class CaregiverRequestsViewScreen extends StatelessWidget {
@@ -15,7 +15,7 @@ class CaregiverRequestsViewScreen extends StatelessWidget {
             title: const Text('Pending Patient Requests'),
             backgroundColor: const Color(0xFF4B9F90),
           ),
-          body: StreamBuilder<List<CaregiverRequestItem>>(
+          body: StreamBuilder<List<CaregiverRequestModel>>(
             stream: viewModel.getRequestsStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
