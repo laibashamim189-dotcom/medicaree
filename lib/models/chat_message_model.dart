@@ -10,17 +10,19 @@ class ChatMessageModel {
   final String? privateType;
   final String receiverId;
   final List<dynamic> deletedFor;
+  final bool isUser; // Added for AI Chat compatibility
 
   ChatMessageModel({
-    required this.id,
-    required this.senderId,
-    required this.senderName,
+    this.id = '',
+    this.senderId = '',
+    this.senderName = '',
     required this.text,
     this.timestamp,
-    required this.isPrivate,
+    this.isPrivate = false,
     this.privateType,
-    required this.receiverId,
-    required this.deletedFor,
+    this.receiverId = '',
+    this.deletedFor = const [],
+    this.isUser = false, // Default to false (used for AI Chat)
   });
 
   factory ChatMessageModel.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +37,7 @@ class ChatMessageModel {
       privateType: data['privateType'],
       receiverId: data['receiverId'] ?? '',
       deletedFor: data['deletedFor'] ?? [],
+      isUser: false,
     );
   }
 }
