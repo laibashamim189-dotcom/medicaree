@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/app_user_model.dart';
+import '../models/user_model.dart';
 import '../view_models/admin_users_view_model.dart';
 
 class AdminUsersScreen extends StatefulWidget {
@@ -54,7 +54,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               ),
             ],
           ),
-          body: StreamBuilder<List<AppUserModel>>(
+          body: StreamBuilder<List<UserModel>>(
             stream: viewModel.getUsersStream(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
