@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../models/pharmacy_delivery_model.dart';
+import '../models/pharmacy_order_model.dart';
 
 class PharmacyDeliveryViewModel extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -43,8 +43,8 @@ class PharmacyDeliveryViewModel extends ChangeNotifier {
     if (RegExp(r'^[0-9]+$').hasMatch(emailNamePart)) {
       return "Email prefix cannot be numeric alone";
     }
-    if (!RegExp(r'^[0-9]+$').hasMatch(pPhone)) {
-      return "Phone number must be numeric";
+    if (!pPhone.contains(RegExp(r'[0-9]'))) {
+       return "Phone number must contain numeric digits";
     }
     return null;
   }
@@ -104,13 +104,13 @@ class PharmacyDeliveryViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
-  Stream<List<MedicineOrderModel>> getOrdersStream() {
+  Stream<List<PharmacyOrderModel>> getOrdersStream() {
     return _firestore
         .collection('medicine_orders')
         .where('userId', isEqualTo: _effectivePatientId)
         .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => MedicineOrderModel.fromFirestore(doc)).toList());
+        .map((snapshot) => snapshot.docs.map((doc) => PharmacyOrderModel.fromFirestore(doc)).toList());
   }
   Future<void> confirmDeliveryAddress(String orderId, String address) async {
     if (address.trim().isEmpty) return;
