@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../models/admin_menu_item.dart';
+import '../models/admin_models.dart';
 import '../views/admin_license_approval_screen.dart';
 import '../views/admin_feedback_screen.dart';
 import '../views/admin_users_screen.dart';
