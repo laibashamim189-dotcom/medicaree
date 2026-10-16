@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../models/caregiver_request_item.dart';
+import '../models/caregiver_request_model.dart';
 
 class CaregiverRequestsViewModel extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -9,7 +9,7 @@ class CaregiverRequestsViewModel extends ChangeNotifier {
 
   String get currentCaregiverEmail => _auth.currentUser?.email ?? '';
 
-  Stream<List<CaregiverRequestItem>> getRequestsStream() {
+  Stream<List<CaregiverRequestModel>> getRequestsStream() {
     if (currentCaregiverEmail.isEmpty) return const Stream.empty();
 
     return _firestore
@@ -17,7 +17,7 @@ class CaregiverRequestsViewModel extends ChangeNotifier {
         .where('caregiverEmail', isEqualTo: currentCaregiverEmail)
         .snapshots()
         .map((snapshot) => snapshot.docs
-        .map((doc) => CaregiverRequestItem.fromFirestore(doc))
+        .map((doc) => CaregiverRequestModel.fromFirestore(doc))
         .toList());
   }
 

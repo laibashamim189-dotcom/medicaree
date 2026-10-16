@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../models/appointment_screen_model.dart';
+import '../models/appointment_model.dart';
 import '../services/notification_service.dart';
 
 class AppointmentScreenViewModel extends ChangeNotifier {
@@ -51,7 +51,7 @@ class AppointmentScreenViewModel extends ChangeNotifier {
     }
   }
 
-  Stream<List<AppointmentScreenModel>> getAppointmentsStream() {
+  Stream<List<AppointmentModel>> getAppointmentsStream() {
     return _firestore
         .collection('reminders')
         .where('userId', isEqualTo: _effectivePatientId)
@@ -59,7 +59,7 @@ class AppointmentScreenViewModel extends ChangeNotifier {
         .orderBy('timestamp', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-        .map((doc) => AppointmentScreenModel.fromFirestore(doc))
+        .map((doc) => AppointmentModel.fromFirestore(doc))
         .toList());
   }
 
@@ -76,7 +76,7 @@ class AppointmentScreenViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final appointment = AppointmentScreenModel(
+      final appointment = AppointmentModel(
         id: '',
         userId: _effectivePatientId,
         doctorName: doctorName.trim(),
