@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../models/splash_model.dart';
+
+enum NavigationTarget {
+  login,
+  home,
+}
 
 class SplashViewModel extends ChangeNotifier {
   Timer? _timer;
@@ -20,6 +24,7 @@ class SplashViewModel extends ChangeNotifier {
   }
 
   NavigationTarget determineTargetScreen() {
+    // You can add logic here to check if user is already logged in
     return NavigationTarget.login;
   }
 
