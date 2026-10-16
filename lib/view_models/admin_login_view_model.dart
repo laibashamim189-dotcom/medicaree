@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/admin_credentials.dart';
+import '../models/admin_models.dart';
 
 class AdminLoginViewModel extends ChangeNotifier {
   bool _obscurePassword = true;
