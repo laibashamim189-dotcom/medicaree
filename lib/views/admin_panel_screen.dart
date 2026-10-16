@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/admin_menu_item.dart';
+import '../models/admin_models.dart';
 import '../view_models/admin_panel_view_model.dart';
 import 'admin_license_approval_screen.dart';
 import 'login_screen.dart';
