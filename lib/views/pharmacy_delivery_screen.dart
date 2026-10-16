@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/pharmacy_delivery_model.dart';
+import '../models/pharmacy_order_model.dart';
 import '../view_models/pharmacy_delivery_view_model.dart';
 
 class PharmacyDeliveryScreen extends StatefulWidget {
@@ -209,7 +209,7 @@ class _PharmacyDeliveryScreenState extends State<PharmacyDeliveryScreen> {
             const SizedBox(height: 10),
 
             // Order Stream History
-            StreamBuilder<List<MedicineOrderModel>>(
+            StreamBuilder<List<PharmacyOrderModel>>(
               stream: _viewModel.getOrdersStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
