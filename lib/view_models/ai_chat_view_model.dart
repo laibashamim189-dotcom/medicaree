@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import '../models/ChatMessage_model.dart';
+import '../models/chat_message_model.dart';
 
 class AiChatViewModel extends ChangeNotifier {
   final List<ChatMessageModel> _messages = [
